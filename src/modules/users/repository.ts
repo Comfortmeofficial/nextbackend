@@ -49,6 +49,16 @@ export async function createUser(input: UserCreateInput): Promise<UserDto> {
     throw new ApiError(409, "User with this email already exists");
   }
 
+  if (input.phone) {
+    const { rows: existingPhone } = await pool.query(
+      `SELECT id FROM users WHERE phone = $1 AND deleted_at IS NULL`,
+      [input.phone],
+    );
+    if (existingPhone.length > 0) {
+      throw new ApiError(409, "User with this phone number already exists");
+    }
+  }
+
   // password_hash has no login purpose here (auth_service owns real
   // credentials) — the legacy service fills it with a random placeholder
   // via Python's secrets.token_hex(32); this is the same 32-random-bytes-as-hex shape.

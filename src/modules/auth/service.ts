@@ -119,7 +119,7 @@ export async function signup(data: SignupInput) {
     userId = user.id;
   } catch (e: unknown) {
     if (e instanceof ApiError && e.status === 409) {
-      throw new AuthError(409, "Email already in use");
+      throw new AuthError(409, e.detail);
     }
     console.error("[auth-service] user creation failed:", e);
     throw new AuthError(502, "Failed to create user profile");
