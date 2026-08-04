@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { after } from "next/server";
 import { ApiError } from "@/lib/http-errors";
 import { createUser, updateUser } from "@/modules/users/repository";
 import { sendOtpNotification, sendWaitlistNotification } from "@/modules/notifications/service";
@@ -40,7 +41,9 @@ export async function sendOTP(email: string, purpose: string): Promise<string> {
   // Fire-and-forget, matching the source's un-awaited axios.post().catch(() => {}) —
   // notification_service now lives in this app, so this is a direct call
   // instead of an HTTP loopback, but the non-blocking behavior is preserved.
-  sendOtpNotification({ email, otp, purpose }).catch(() => {});
+  // Wrapped in after() so Vercel keeps the function alive until this
+  // settles instead of freezing the runtime once the response is sent.
+  after(() => sendOtpNotification({ email, otp, purpose }).catch(() => {}));
 
   return otp;
 }
@@ -258,10 +261,14 @@ export async function completeSignupVerification(email: string) {
   await query("UPDATE auth_users SET is_verified = TRUE WHERE email = $1", [email]);
   // Best-effort: a failure here must not block the rider from completing
   // signup — the admin dashboard's verified badge is a secondary concern
-  // next to the user actually being able to use the app.
-  updateUser(user_id, { is_verified: true }).catch((e: unknown) => {
-    console.error("[auth-service] failed to sync is_verified to user module:", e);
-  });
+  // next to the user actually being able to use the app. Wrapped in after()
+  // so Vercel keeps the function alive until this settles instead of
+  // freezing the runtime once the response is sent.
+  after(() =>
+    updateUser(user_id, { is_verified: true }).catch((e: unknown) => {
+      console.error("[auth-service] failed to sync is_verified to user module:", e);
+    }),
+  );
   return issueTokens(user_id, email, role);
 }
 
@@ -308,7 +315,7 @@ export async function joinWaitlist(data: WaitlistInput) {
     ],
   );
 
-  sendWaitlistNotification({ email, full_name: data.full_name }).catch(() => {});
+  after(() => sendWaitlistNotification({ email, full_name: data.full_name }).catch(() => {}));
 
   return { id: res.rows[0].id, email };
 }
