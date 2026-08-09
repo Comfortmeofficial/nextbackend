@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
+import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { deleteRoute, getRoute } from "@/modules/booking/repository/routes";
 import { parseBookingId } from "@/modules/booking/util";
 
@@ -17,8 +18,9 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: Params) {
+export async function DELETE(request: NextRequest, { params }: Params) {
   try {
+    requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     await deleteRoute(id);

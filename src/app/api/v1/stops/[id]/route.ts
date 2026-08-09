@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
+import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { stopRepo } from "@/modules/booking/repository/places";
 import { placeInputSchema } from "@/modules/booking/validation";
 import { parseBookingId } from "@/modules/booking/util";
@@ -19,6 +20,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
+    requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const body = placeInputSchema.parse(await request.json());
@@ -29,8 +31,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: Params) {
+export async function DELETE(request: NextRequest, { params }: Params) {
   try {
+    requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     await stopRepo.delete(id);

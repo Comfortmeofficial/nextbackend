@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
+import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { fetchBusInfo, fetchDriverInfo } from "@/modules/booking/external";
 import { createRide, listRides } from "@/modules/booking/repository/rides";
 import type { SeatDef } from "@/modules/booking/repository/rides";
@@ -26,6 +27,7 @@ function parseRfc3339(value: string, field: string): Date {
 // POST /api/v1/rides
 export async function POST(request: NextRequest) {
   try {
+    requireAdminAuth(request, OPS_ROLES);
     const input = rideInputSchema.parse(await request.json());
     const departureTime = parseRfc3339(input.departure_time, "departure_time");
     const arrivalTime = input.arrival_time ? parseRfc3339(input.arrival_time, "arrival_time") : null;

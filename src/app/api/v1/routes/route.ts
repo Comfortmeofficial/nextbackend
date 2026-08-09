@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
+import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { createRoute, listRoutes } from "@/modules/booking/repository/routes";
 import { listQuerySchema, routeInputSchema } from "@/modules/booking/validation";
 
 // POST /api/v1/routes
 export async function POST(request: NextRequest) {
   try {
+    requireAdminAuth(request, OPS_ROLES);
     const body = routeInputSchema.parse(await request.json());
     const route = await createRoute(body);
     return NextResponse.json(route, { status: 201 });
