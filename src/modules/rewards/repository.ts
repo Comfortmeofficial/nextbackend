@@ -346,11 +346,27 @@ export async function deleteMilestone(id: number): Promise<void> {
 export async function getReferralProgress(userId: number): Promise<ReferralProgressDto> {
   await ensureRewardsSchema();
   const owned = await findActiveByOwner(userId);
-  const useCount = owned?.use_count ?? 0;
+
+  // Milestones track people actually referred — i.e. rows in
+  // referral_conversions, credited once a referee completes a qualifying
+  // booking or wallet top-up (see rewardReferrerIfEligible). This is
+  // deliberately NOT referral_codes.use_count, which instead counts how
+  // many times the code was redeemed as a discount coupon at checkout — a
+  // different, unrelated number that stays 0 for owners whose code was
+  // never typed into a coupon field, even after real referrals convert.
+  let referralCount = 0;
+  if (owned) {
+    const pool = getRewardsPool();
+    const { rows } = await pool.query<{ count: string }>(
+      `SELECT COUNT(*) FROM referral_conversions WHERE referral_code_id = $1`,
+      [owned.id],
+    );
+    referralCount = parseInt(rows[0].count, 10);
+  }
 
   const milestones = await listMilestones(true);
-  const achieved = milestones.filter((m) => useCount >= m.threshold);
-  const next = milestones.find((m) => useCount < m.threshold) ?? null;
+  const achieved = milestones.filter((m) => referralCount >= m.threshold);
+  const next = milestones.find((m) => referralCount < m.threshold) ?? null;
 
   let unclaimed = achieved;
   if (owned && achieved.length > 0) {
@@ -364,12 +380,12 @@ export async function getReferralProgress(userId: number): Promise<ReferralProgr
   }
 
   return {
-    use_count: useCount,
+    referral_count: referralCount,
     milestones,
     achieved_milestones: achieved,
     unclaimed_milestones: unclaimed,
     next_milestone: next,
-    remaining_to_next: next ? next.threshold - useCount : null,
+    remaining_to_next: next ? next.threshold - referralCount : null,
   };
 }
 

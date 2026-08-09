@@ -70,7 +70,9 @@ export interface ReferralMilestoneDto {
 }
 
 export interface ReferralProgressDto {
-  use_count: number;
+  // Count of people actually referred (referral_conversions rows) — not
+  // referral_codes.use_count, which tracks coupon redemptions instead.
+  referral_count: number;
   milestones: ReferralMilestoneDto[];
   achieved_milestones: ReferralMilestoneDto[];
   unclaimed_milestones: ReferralMilestoneDto[];
