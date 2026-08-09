@@ -37,3 +37,27 @@ export const convertReferralSchema = z.object({
   trigger: z.enum(["booking", "wallet_funding"]),
 });
 export type ConvertReferralInput = z.infer<typeof convertReferralSchema>;
+
+export const milestoneRewardTypeSchema = z.enum(["flat", "percentage"]);
+
+export const referralMilestoneCreateSchema = z.object({
+  threshold: z.number().int().positive(),
+  reward_type: milestoneRewardTypeSchema.default("percentage"),
+  reward_value: z.number().nonnegative(),
+  label: z.string().default(""),
+  is_active: z.boolean().default(true),
+});
+export type ReferralMilestoneCreateInput = z.infer<typeof referralMilestoneCreateSchema>;
+
+export const referralMilestoneUpdateSchema = referralMilestoneCreateSchema.partial();
+export type ReferralMilestoneUpdateInput = z.infer<typeof referralMilestoneUpdateSchema>;
+
+export const claimMilestoneSchema = z.object({
+  user_id: z.number().int(),
+  milestone_id: z.number().int(),
+});
+export type ClaimMilestoneInput = z.infer<typeof claimMilestoneSchema>;
+
+export const progressQuerySchema = z.object({
+  user_id: z.coerce.number().int(),
+});

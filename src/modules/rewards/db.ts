@@ -62,6 +62,30 @@ export function ensureRewardsSchema(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
+
+      -- Admin-configured reward ladder: "refer N people, earn this reward."
+      -- Global — applies the same way to every user's own referral code.
+      CREATE TABLE IF NOT EXISTS referral_milestones (
+        id SERIAL PRIMARY KEY,
+        threshold INTEGER NOT NULL UNIQUE,
+        reward_type VARCHAR(20) NOT NULL DEFAULT 'PERCENTAGE'
+          CHECK (reward_type IN ('FLAT', 'PERCENTAGE')),
+        reward_value NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        label VARCHAR(255) NOT NULL DEFAULT '',
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE TABLE IF NOT EXISTS referral_milestone_claims (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        milestone_id INTEGER NOT NULL REFERENCES referral_milestones(id),
+        referral_code_id INTEGER NOT NULL REFERENCES referral_codes(id),
+        claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (user_id, milestone_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_referral_milestone_claims_user ON referral_milestone_claims (user_id);
     `).then(() => undefined);
   }
   return global.__rewardsSchemaReady;

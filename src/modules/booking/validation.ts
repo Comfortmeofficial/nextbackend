@@ -18,12 +18,19 @@ export const placeInputSchema = z.object({
 });
 export type PlaceInput = z.infer<typeof placeInputSchema>;
 
+const routeStopInputSchema = z.object({
+  stop_id: requiredId,
+  // Explicit pickup fare for this stop — omitted/undefined means riders
+  // boarding here pay the ride's base fare instead.
+  fare: z.number().nonnegative().optional(),
+});
+
 export const routeInputSchema = z.object({
   name: requiredString,
   location_id: requiredId,
   destination_id: requiredId,
   distance_km: z.number().default(0),
-  stop_ids: z.array(z.number().int()).default([]),
+  stops: z.array(routeStopInputSchema).default([]),
 });
 export type RouteInput = z.infer<typeof routeInputSchema>;
 
@@ -57,6 +64,7 @@ export const bookingInputSchema = z.object({
   discount_amount: z.number().default(0),
   coupon_code: z.string().default(""),
   payment_method: paymentMethodSchema,
+  pickup_stop_id: z.number().int().positive().nullable().optional(),
 });
 export type BookingInput = z.infer<typeof bookingInputSchema>;
 
@@ -72,6 +80,7 @@ export const bulkBookingInputSchema = z.object({
   payment_method: paymentMethodSchema,
   coupon_code: z.string().default(""),
   group_reference: z.string().default(""),
+  pickup_stop_id: z.number().int().positive().nullable().optional(),
   seats: z.array(bulkBookingSeatInputSchema).min(1),
 });
 export type BulkBookingInput = z.infer<typeof bulkBookingInputSchema>;

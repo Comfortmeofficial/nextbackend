@@ -40,6 +40,9 @@ export interface RouteStopDto {
   route_id: number;
   stop_id: number;
   stop_order: number;
+  // Explicit pickup fare for boarding at this stop instead of the route's
+  // main location — null means "use the ride's base fare."
+  fare: number | null;
   stop: PlaceDto;
 }
 
@@ -152,6 +155,7 @@ export interface BookingRow {
   payment_method: PaymentMethod;
   status: BookingStatus;
   is_on_board: boolean;
+  pickup_stop_id: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -170,6 +174,7 @@ export interface BookingDto {
   payment_method: PaymentMethod;
   status: BookingStatus;
   is_on_board: boolean;
+  pickup_stop_id: number | null;
   ride: RideDto;
   created_at: string;
   updated_at: string;

@@ -43,3 +43,42 @@ export interface ConvertReferralResponseDto {
   referrer_user_id?: number | null;
   reward_amount?: number | null;
 }
+
+export type MilestoneRewardTypeDb = "FLAT" | "PERCENTAGE";
+export type MilestoneRewardTypeApi = "flat" | "percentage";
+
+export interface ReferralMilestoneRow {
+  id: number;
+  threshold: number;
+  reward_type: MilestoneRewardTypeDb;
+  reward_value: string; // NUMERIC comes back as a string from node-postgres
+  label: string;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ReferralMilestoneDto {
+  id: number;
+  threshold: number;
+  reward_type: MilestoneRewardTypeApi;
+  reward_value: number;
+  label: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReferralProgressDto {
+  use_count: number;
+  milestones: ReferralMilestoneDto[];
+  achieved_milestones: ReferralMilestoneDto[];
+  unclaimed_milestones: ReferralMilestoneDto[];
+  next_milestone: ReferralMilestoneDto | null;
+  remaining_to_next: number | null;
+}
+
+export interface ClaimMilestoneResponseDto {
+  milestone: ReferralMilestoneDto;
+  claimed_at: string;
+}

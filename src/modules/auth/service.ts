@@ -211,18 +211,26 @@ export async function refreshTokens(token: string) {
 export async function resetPassword(email: string, otp: string, newPassword: string) {
   await ensureAuthSchema();
   email = normalizeEmail(email);
+
+  // Check the user exists before consuming the OTP — verifyOTP marks the code
+  // used as a side effect, so doing that first would burn a valid OTP on
+  // every failed attempt (e.g. a stale/wrong email), leaving the user with no
+  // way to retry without requesting a brand new code.
+  const userRes = await query("SELECT id FROM auth_users WHERE email = $1", [email]);
+  if (userRes.rowCount === 0) {
+    throw new AuthError(404, "User not found");
+  }
+
   const valid = await verifyOTP(email, otp, "password_reset");
   if (!valid) {
     throw new AuthError(400, "Invalid or expired OTP");
   }
+
   const password_hash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-  const res = await query(
-    "UPDATE auth_users SET password_hash = $1, updated_at = NOW() WHERE email = $2 RETURNING id",
-    [password_hash, email],
-  );
-  if (res.rowCount === 0) {
-    throw new AuthError(404, "User not found");
-  }
+  await query("UPDATE auth_users SET password_hash = $1, updated_at = NOW() WHERE email = $2", [
+    password_hash,
+    email,
+  ]);
 }
 
 // ---------- Change password (authenticated) ----------

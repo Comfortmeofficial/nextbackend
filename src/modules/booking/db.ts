@@ -79,8 +79,10 @@ export function ensureBookingSchema(): Promise<void> {
         id SERIAL PRIMARY KEY,
         route_id INTEGER NOT NULL,
         stop_id INTEGER NOT NULL,
-        stop_order INTEGER NOT NULL
+        stop_order INTEGER NOT NULL,
+        fare DOUBLE PRECISION
       );
+      ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS fare DOUBLE PRECISION;
       CREATE INDEX IF NOT EXISTS idx_route_stops_route_id ON route_stops (route_id);
 
       CREATE TABLE IF NOT EXISTS rides (
@@ -132,10 +134,12 @@ export function ensureBookingSchema(): Promise<void> {
         payment_method VARCHAR(20) NOT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'pending',
         is_on_board BOOLEAN NOT NULL DEFAULT false,
+        pickup_stop_id INTEGER,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         deleted_at TIMESTAMPTZ
       );
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_stop_id INTEGER;
       CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings (user_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_ride_id ON bookings (ride_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_group_reference ON bookings (group_reference);

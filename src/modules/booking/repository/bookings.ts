@@ -23,6 +23,7 @@ async function toDto(row: BookingRow): Promise<BookingDto> {
     payment_method: row.payment_method,
     status: row.status,
     is_on_board: row.is_on_board,
+    pickup_stop_id: row.pickup_stop_id,
     // Nested ride never carries `seats` here — the source's booking
     // preloads (Ride.Route.*) never touch Ride.Seats either.
     ride: ride
@@ -61,6 +62,7 @@ export interface BookingSeatInput {
   couponCode: string;
   groupReference: string;
   paymentMethod: PaymentMethod;
+  pickupStopId?: number | null;
 }
 
 async function insertBookingRow(client: PoolClient, input: BookingSeatInput): Promise<BookingRow> {
@@ -79,8 +81,8 @@ async function insertBookingRow(client: PoolClient, input: BookingSeatInput): Pr
   const { rows } = await client.query(
     `INSERT INTO bookings (
        reference, group_reference, user_id, ride_id, seat_number, amount,
-       discount_amount, final_amount, coupon_code, payment_method, status
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'confirmed')
+       discount_amount, final_amount, coupon_code, payment_method, status, pickup_stop_id
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'confirmed', $11)
      RETURNING *`,
     [
       reference,
@@ -93,6 +95,7 @@ async function insertBookingRow(client: PoolClient, input: BookingSeatInput): Pr
       input.finalAmount,
       input.couponCode,
       input.paymentMethod,
+      input.pickupStopId ?? null,
     ],
   );
   const booking = rows[0] as BookingRow;

@@ -66,6 +66,7 @@ export const payBookingRequestSchema = z.object({
   coupon_code: z.string().nullable().optional(),
   authorization_code: z.string().nullable().optional(),
   callback_url: z.string().nullable().optional(),
+  pickup_stop_id: z.number().int().positive().nullable().optional(),
 });
 export type PayBookingRequestInput = z.infer<typeof payBookingRequestSchema>;
 

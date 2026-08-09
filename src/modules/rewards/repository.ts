@@ -3,12 +3,24 @@ import { ApiError } from "@/lib/http-errors";
 import { ensureRewardsSchema, getRewardsPool } from "./db";
 import type {
   ApplyReferralResponseDto,
+  ClaimMilestoneResponseDto,
   ConvertReferralResponseDto,
+  MilestoneRewardTypeApi,
   ReferralCodeDto,
   ReferralCodeRow,
+  ReferralMilestoneDto,
+  ReferralMilestoneRow,
+  ReferralProgressDto,
   RewardTypeApi,
 } from "./types";
-import type { ApplyReferralInput, ConvertReferralInput, ReferralCodeCreateInput } from "./validation";
+import type {
+  ApplyReferralInput,
+  ClaimMilestoneInput,
+  ConvertReferralInput,
+  ReferralCodeCreateInput,
+  ReferralMilestoneCreateInput,
+  ReferralMilestoneUpdateInput,
+} from "./validation";
 
 // Excludes visually ambiguous characters (0/O, 1/I/L) — same rationale as
 // the legacy service, codes get read off a screen and shared.
@@ -231,5 +243,164 @@ export async function convertReferral(input: ConvertReferralInput): Promise<Conv
     rewarded: true,
     referrer_user_id: ref.owner_user_id,
     reward_amount: rewardAmount,
+  };
+}
+
+// ---------- Referral milestones ----------
+
+function toMilestoneApiRewardType(rewardType: ReferralMilestoneRow["reward_type"]): MilestoneRewardTypeApi {
+  return rewardType.toLowerCase() as MilestoneRewardTypeApi;
+}
+
+function toMilestoneDbRewardType(rewardType: MilestoneRewardTypeApi): ReferralMilestoneRow["reward_type"] {
+  return rewardType.toUpperCase() as ReferralMilestoneRow["reward_type"];
+}
+
+function toMilestoneDto(row: ReferralMilestoneRow): ReferralMilestoneDto {
+  return {
+    id: row.id,
+    threshold: row.threshold,
+    reward_type: toMilestoneApiRewardType(row.reward_type),
+    reward_value: parseFloat(row.reward_value),
+    label: row.label,
+    is_active: row.is_active,
+    created_at: row.created_at.toISOString(),
+    updated_at: row.updated_at.toISOString(),
+  };
+}
+
+export async function createMilestone(input: ReferralMilestoneCreateInput): Promise<ReferralMilestoneDto> {
+  await ensureRewardsSchema();
+  const pool = getRewardsPool();
+  const existing = await pool.query(`SELECT id FROM referral_milestones WHERE threshold = $1`, [
+    input.threshold,
+  ]);
+  if ((existing.rowCount ?? 0) > 0) {
+    throw new ApiError(409, "A milestone already exists at this referral count");
+  }
+  const { rows } = await pool.query<ReferralMilestoneRow>(
+    `INSERT INTO referral_milestones (threshold, reward_type, reward_value, label, is_active)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [
+      input.threshold,
+      toMilestoneDbRewardType(input.reward_type),
+      input.reward_value,
+      input.label,
+      input.is_active,
+    ],
+  );
+  return toMilestoneDto(rows[0]);
+}
+
+export async function listMilestones(activeOnly = false): Promise<ReferralMilestoneDto[]> {
+  await ensureRewardsSchema();
+  const pool = getRewardsPool();
+  const { rows } = await pool.query<ReferralMilestoneRow>(
+    `SELECT * FROM referral_milestones ${activeOnly ? "WHERE is_active = true" : ""} ORDER BY threshold ASC`,
+  );
+  return rows.map(toMilestoneDto);
+}
+
+async function findMilestoneRow(id: number): Promise<ReferralMilestoneRow> {
+  const pool = getRewardsPool();
+  const { rows } = await pool.query<ReferralMilestoneRow>(
+    `SELECT * FROM referral_milestones WHERE id = $1`,
+    [id],
+  );
+  if (!rows[0]) {
+    throw new ApiError(404, "Milestone not found");
+  }
+  return rows[0];
+}
+
+export async function updateMilestone(
+  id: number,
+  input: ReferralMilestoneUpdateInput,
+): Promise<ReferralMilestoneDto> {
+  await ensureRewardsSchema();
+  const current = await findMilestoneRow(id);
+  const pool = getRewardsPool();
+  const { rows } = await pool.query<ReferralMilestoneRow>(
+    `UPDATE referral_milestones
+     SET threshold = $2, reward_type = $3, reward_value = $4, label = $5, is_active = $6, updated_at = now()
+     WHERE id = $1 RETURNING *`,
+    [
+      id,
+      input.threshold ?? current.threshold,
+      toMilestoneDbRewardType(input.reward_type ?? toMilestoneApiRewardType(current.reward_type)),
+      input.reward_value ?? parseFloat(current.reward_value),
+      input.label ?? current.label,
+      input.is_active ?? current.is_active,
+    ],
+  );
+  return toMilestoneDto(rows[0]);
+}
+
+export async function deleteMilestone(id: number): Promise<void> {
+  await ensureRewardsSchema();
+  await findMilestoneRow(id);
+  const pool = getRewardsPool();
+  await pool.query(`DELETE FROM referral_milestones WHERE id = $1`, [id]);
+}
+
+export async function getReferralProgress(userId: number): Promise<ReferralProgressDto> {
+  await ensureRewardsSchema();
+  const owned = await findActiveByOwner(userId);
+  const useCount = owned?.use_count ?? 0;
+
+  const milestones = await listMilestones(true);
+  const achieved = milestones.filter((m) => useCount >= m.threshold);
+  const next = milestones.find((m) => useCount < m.threshold) ?? null;
+
+  let unclaimed = achieved;
+  if (owned && achieved.length > 0) {
+    const pool = getRewardsPool();
+    const { rows: claimed } = await pool.query<{ milestone_id: number }>(
+      `SELECT milestone_id FROM referral_milestone_claims WHERE user_id = $1`,
+      [userId],
+    );
+    const claimedIds = new Set(claimed.map((r) => r.milestone_id));
+    unclaimed = achieved.filter((m) => !claimedIds.has(m.id));
+  }
+
+  return {
+    use_count: useCount,
+    milestones,
+    achieved_milestones: achieved,
+    unclaimed_milestones: unclaimed,
+    next_milestone: next,
+    remaining_to_next: next ? next.threshold - useCount : null,
+  };
+}
+
+export async function claimMilestone(input: ClaimMilestoneInput): Promise<ClaimMilestoneResponseDto> {
+  await ensureRewardsSchema();
+  const owned = await findActiveByOwner(input.user_id);
+  if (!owned) {
+    throw new ApiError(404, "You don't have a referral code yet");
+  }
+  const milestoneRow = await findMilestoneRow(input.milestone_id);
+  if (owned.use_count < milestoneRow.threshold) {
+    throw new ApiError(400, "You haven't reached this milestone yet");
+  }
+
+  const pool = getRewardsPool();
+  const { rows: existing } = await pool.query(
+    `SELECT id FROM referral_milestone_claims WHERE user_id = $1 AND milestone_id = $2`,
+    [input.user_id, input.milestone_id],
+  );
+  if (existing.length > 0) {
+    throw new ApiError(409, "You've already claimed this milestone");
+  }
+
+  const { rows } = await pool.query<{ claimed_at: Date }>(
+    `INSERT INTO referral_milestone_claims (user_id, milestone_id, referral_code_id)
+     VALUES ($1, $2, $3) RETURNING claimed_at`,
+    [input.user_id, input.milestone_id, owned.id],
+  );
+
+  return {
+    milestone: toMilestoneDto(milestoneRow),
+    claimed_at: rows[0].claimed_at.toISOString(),
   };
 }

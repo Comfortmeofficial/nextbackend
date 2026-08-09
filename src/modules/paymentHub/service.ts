@@ -198,6 +198,7 @@ export async function payBooking(data: PayBookingRequestInput) {
       couponCode: data.coupon_code || "",
       groupReference: reference,
       paymentMethod,
+      pickupStopId: data.pickup_stop_id ?? null,
     }));
 
   let bookings;

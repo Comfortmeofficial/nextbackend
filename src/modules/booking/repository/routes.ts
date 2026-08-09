@@ -36,6 +36,7 @@ async function loadFullRoute(id: number): Promise<RouteDto | null> {
     route_id: number;
     stop_id: number;
     stop_order: number;
+    fare: number | null;
     name: string;
     state: string;
     latitude: number;
@@ -43,7 +44,7 @@ async function loadFullRoute(id: number): Promise<RouteDto | null> {
     created_at: Date;
     updated_at: Date;
   }>(
-    `SELECT rs.id, rs.route_id, rs.stop_id, rs.stop_order, s.name, s.state, s.latitude, s.longitude, s.created_at, s.updated_at
+    `SELECT rs.id, rs.route_id, rs.stop_id, rs.stop_order, rs.fare, s.name, s.state, s.latitude, s.longitude, s.created_at, s.updated_at
      FROM route_stops rs JOIN stops s ON s.id = rs.stop_id
      WHERE rs.route_id = $1 ORDER BY rs.stop_order ASC`,
     [id],
@@ -54,6 +55,7 @@ async function loadFullRoute(id: number): Promise<RouteDto | null> {
     route_id: r.route_id,
     stop_id: r.stop_id,
     stop_order: r.stop_order,
+    fare: r.fare,
     stop: placeDto({
       id: r.stop_id,
       name: r.name,
@@ -98,10 +100,10 @@ export async function createRoute(input: RouteInput): Promise<RouteDto> {
       [input.name, input.location_id, input.destination_id, input.distance_km],
     );
     const route = rows[0];
-    for (let i = 0; i < input.stop_ids.length; i++) {
+    for (let i = 0; i < input.stops.length; i++) {
       await client.query(
-        `INSERT INTO route_stops (route_id, stop_id, stop_order) VALUES ($1, $2, $3)`,
-        [route.id, input.stop_ids[i], i + 1],
+        `INSERT INTO route_stops (route_id, stop_id, stop_order, fare) VALUES ($1, $2, $3, $4)`,
+        [route.id, input.stops[i].stop_id, i + 1, input.stops[i].fare ?? null],
       );
     }
     await client.query("COMMIT");

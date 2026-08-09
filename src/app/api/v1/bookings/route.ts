@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
       couponCode: input.coupon_code,
       groupReference: "",
       paymentMethod: input.payment_method,
+      pickupStopId: input.pickup_stop_id ?? null,
     });
     return NextResponse.json(booking, { status: 201 });
   } catch (error) {
