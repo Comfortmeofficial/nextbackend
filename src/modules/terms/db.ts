@@ -39,11 +39,14 @@ export function ensureTermsSchema(): Promise<void> {
         content TEXT NOT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
           CHECK (status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')),
+        doc_type VARCHAR(20) NOT NULL DEFAULT 'terms'
+          CHECK (doc_type IN ('terms', 'privacy')),
         created_by_admin_id INTEGER,
         published_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      )
+      );
+      ALTER TABLE terms_and_conditions ADD COLUMN IF NOT EXISTS doc_type VARCHAR(20) NOT NULL DEFAULT 'terms';
     `).then(() => undefined);
   }
   return global.__termsSchemaReady;

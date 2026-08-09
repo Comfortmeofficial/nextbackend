@@ -14,6 +14,7 @@ function toDto(row: TermsRow): TermsDto {
     title: row.title,
     content: row.content,
     status: toApiStatus(row.status),
+    doc_type: row.doc_type,
     created_by_admin_id: row.created_by_admin_id,
     published_at: row.published_at ? row.published_at.toISOString() : null,
     created_at: row.created_at.toISOString(),
@@ -34,10 +35,10 @@ export async function createTerms(input: TermsCreateInput): Promise<TermsDto> {
   await ensureTermsSchema();
   const pool = getTermsPool();
   const { rows } = await pool.query<TermsRow>(
-    `INSERT INTO terms_and_conditions (version, title, content, created_by_admin_id)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO terms_and_conditions (version, title, content, doc_type, created_by_admin_id)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [input.version, input.title, input.content, input.created_by_admin_id ?? null],
+    [input.version, input.title, input.content, input.doc_type, input.created_by_admin_id ?? null],
   );
   return toDto(rows[0]);
 }
@@ -61,12 +62,13 @@ export async function getTerms(id: number): Promise<TermsDto> {
   return toDto(row);
 }
 
-export async function getCurrentTerms(): Promise<TermsDto> {
+export async function getCurrentTerms(docType: TermsRow["doc_type"] = "terms"): Promise<TermsDto> {
   await ensureTermsSchema();
   const pool = getTermsPool();
   const { rows } = await pool.query<TermsRow>(
-    `SELECT * FROM terms_and_conditions WHERE status = 'PUBLISHED'
+    `SELECT * FROM terms_and_conditions WHERE status = 'PUBLISHED' AND doc_type = $1
      ORDER BY published_at DESC LIMIT 1`,
+    [docType],
   );
   if (!rows[0]) {
     throw new ApiError(404, "No published terms found");
@@ -121,8 +123,13 @@ export async function publishTerms(id: number): Promise<TermsDto> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // Only archive the previous PUBLISHED row of the same doc_type — Terms
+    // and Privacy Policy are published/archived independently, so
+    // publishing one must never knock the other one offline.
     await client.query(
-      `UPDATE terms_and_conditions SET status = 'ARCHIVED', updated_at = now() WHERE status = 'PUBLISHED'`,
+      `UPDATE terms_and_conditions SET status = 'ARCHIVED', updated_at = now()
+       WHERE status = 'PUBLISHED' AND doc_type = $1`,
+      [row.doc_type],
     );
     const { rows } = await client.query<TermsRow>(
       `UPDATE terms_and_conditions
