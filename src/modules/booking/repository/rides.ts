@@ -64,6 +64,8 @@ function rideRowToDto(ride: RideRow, route: NonNullable<Awaited<ReturnType<typeo
     status: ride.status,
     route,
     ...(seats !== undefined ? { seats } : {}),
+    marshal_admin_id: ride.marshal_admin_id,
+    marshal_name: ride.marshal_name,
     created_at: ride.created_at.toISOString(),
     updated_at: ride.updated_at.toISOString(),
   };
@@ -223,6 +225,31 @@ export async function updateRideDriver(
     [id, driverId, name, rating],
   );
   return (await loadFullRide(id))!;
+}
+
+export async function updateRideMarshal(
+  id: number,
+  marshalAdminId: number | null,
+  marshalName: string | null,
+): Promise<RideDto> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  await pool.query(
+    `UPDATE rides SET marshal_admin_id = $2, marshal_name = $3, updated_at = now() WHERE id = $1`,
+    [id, marshalAdminId, marshalName],
+  );
+  return (await loadFullRide(id))!;
+}
+
+// GET /api/v1/rides/mine — a marshal's own assigned trips.
+export async function listRidesByMarshal(marshalAdminId: number): Promise<RideDto[]> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const { rows } = await pool.query<RideRow>(
+    `SELECT * FROM rides WHERE marshal_admin_id = $1 AND deleted_at IS NULL ORDER BY departure_time ASC`,
+    [marshalAdminId],
+  );
+  return Promise.all(rows.map(loadRideForList));
 }
 
 export async function setBoardingCode(id: number, code: string): Promise<void> {

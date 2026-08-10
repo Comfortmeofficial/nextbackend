@@ -3,13 +3,15 @@ export type AdminRoleDb =
   | "ADMIN"
   | "OPERATIONS_MANAGER"
   | "CUSTOMER_SUPPORT"
-  | "FINANCE_OFFICER";
+  | "FINANCE_OFFICER"
+  | "BUS_MARSHAL";
 export type AdminRoleApi =
   | "super_admin"
   | "admin"
   | "operations_manager"
   | "customer_support"
-  | "finance_officer";
+  | "finance_officer"
+  | "bus_marshal";
 
 export interface AdminRow {
   id: number;

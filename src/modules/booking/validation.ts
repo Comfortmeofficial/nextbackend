@@ -48,6 +48,9 @@ export type RideInput = z.infer<typeof rideInputSchema>;
 export const rideStatusInputSchema = z.object({ status: requiredString });
 export const rideBusInputSchema = z.object({ bus_id: requiredId });
 export const rideDriverInputSchema = z.object({ driver_id: requiredId });
+// marshal_admin_id: null unassigns the current marshal from the ride.
+export const rideMarshalInputSchema = z.object({ marshal_admin_id: requiredId.nullable() });
+export const chatMessageInputSchema = z.object({ message: z.string().trim().min(1).max(2000) });
 
 export const searchInputSchema = z.object({
   location: z.string().default(""),

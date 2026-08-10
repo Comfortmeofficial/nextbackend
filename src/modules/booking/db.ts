@@ -107,6 +107,9 @@ export function ensureBookingSchema(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS idx_rides_route_id ON rides (route_id);
       CREATE INDEX IF NOT EXISTS idx_rides_deleted_at ON rides (deleted_at);
+      ALTER TABLE rides ADD COLUMN IF NOT EXISTS marshal_admin_id INTEGER;
+      ALTER TABLE rides ADD COLUMN IF NOT EXISTS marshal_name VARCHAR(255);
+      CREATE INDEX IF NOT EXISTS idx_rides_marshal_admin_id ON rides (marshal_admin_id);
 
       CREATE TABLE IF NOT EXISTS ride_seats (
         id SERIAL PRIMARY KEY,
@@ -186,6 +189,19 @@ export function ensureBookingSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_packages_ride_id ON packages (ride_id);
       CREATE INDEX IF NOT EXISTS idx_packages_sender_user_id ON packages (sender_user_id);
       CREATE INDEX IF NOT EXISTS idx_packages_deleted_at ON packages (deleted_at);
+
+      -- One thread per (ride, customer) pair, with that ride's assigned
+      -- marshal on the other end. sender_type is enough context per message
+      -- since a ride has at most one marshal at read time.
+      CREATE TABLE IF NOT EXISTS trip_chat_messages (
+        id SERIAL PRIMARY KEY,
+        ride_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        sender_type VARCHAR(10) NOT NULL CHECK (sender_type IN ('customer', 'marshal')),
+        message TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_trip_chat_thread ON trip_chat_messages (ride_id, user_id, created_at);
     `).then(() => undefined);
   }
   return global.__bookingSchemaReady;

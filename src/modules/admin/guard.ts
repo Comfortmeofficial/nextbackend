@@ -61,3 +61,10 @@ export const FULL_ACCESS: AdminRoleApi[] = ["super_admin", "admin"];
 export const OPS_ROLES: AdminRoleApi[] = ["super_admin", "admin", "operations_manager"];
 export const FINANCE_ROLES: AdminRoleApi[] = ["super_admin", "admin", "finance_officer"];
 export const SUPPORT_ROLES: AdminRoleApi[] = ["super_admin", "admin", "customer_support"];
+export const MARSHAL_ROLES: AdminRoleApi[] = ["super_admin", "admin", "bus_marshal"];
+export const OPS_OR_MARSHAL_ROLES: AdminRoleApi[] = [
+  "super_admin",
+  "admin",
+  "operations_manager",
+  "bus_marshal",
+];

@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { ApiError } from "@/lib/http-errors";
+import { getUser } from "@/modules/users/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
-import type { BookingDto, BookingRow, PaymentMethod } from "../types";
+import type { BookingDto, BookingRow, PassengerDto, PaymentMethod } from "../types";
 import { getRideRow } from "./rides";
 import { loadFullRoute } from "./routes";
 
@@ -43,6 +44,8 @@ async function toDto(row: BookingRow): Promise<BookingDto> {
           booked_seats: ride.booked_seats,
           status: ride.status,
           route: route!,
+          marshal_admin_id: ride.marshal_admin_id,
+          marshal_name: ride.marshal_name,
           created_at: ride.created_at.toISOString(),
           updated_at: ride.updated_at.toISOString(),
         }
@@ -236,6 +239,39 @@ export async function listAllBookings(
     params,
   );
   return Promise.all(rows.map(toDto));
+}
+
+// GET /api/v1/rides/{id}/passengers — the marshal/ops view of a ride:
+// booking + customer contact info combined, so marshals never need direct
+// access to the general-purpose GET /api/v1/users/{id} endpoint (which
+// customers rely on for their own profile and must stay open to them).
+export async function listPassengersForRide(rideId: number): Promise<PassengerDto[]> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const { rows } = await pool.query<BookingRow>(
+    `SELECT * FROM bookings WHERE ride_id = $1 AND deleted_at IS NULL AND status != 'cancelled'
+     ORDER BY seat_number ASC`,
+    [rideId],
+  );
+  const passengers = await Promise.all(
+    rows.map(async (row): Promise<PassengerDto> => {
+      const user = await getUser(row.user_id);
+      return {
+        booking_id: row.id,
+        reference: row.reference,
+        seat_number: row.seat_number,
+        status: row.status,
+        is_on_board: row.is_on_board,
+        pickup_stop_id: row.pickup_stop_id,
+        user_id: row.user_id,
+        first_name: user?.first_name ?? "Unknown",
+        last_name: user?.last_name ?? "",
+        phone: user?.phone ?? null,
+        email: user?.email ?? "",
+      };
+    }),
+  );
+  return passengers;
 }
 
 export async function markOnBoard(id: number): Promise<BookingDto> {

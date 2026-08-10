@@ -36,6 +36,8 @@ async function toDto(row: PackageRow): Promise<PackageDto> {
           booked_seats: ride.booked_seats,
           status: ride.status,
           route: route!,
+          marshal_admin_id: ride.marshal_admin_id,
+          marshal_name: ride.marshal_name,
           created_at: ride.created_at.toISOString(),
           updated_at: ride.updated_at.toISOString(),
         }

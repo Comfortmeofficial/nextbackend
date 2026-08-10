@@ -8,6 +8,7 @@ const adminRoleSchema = z.enum([
   "operations_manager",
   "customer_support",
   "finance_officer",
+  "bus_marshal",
 ]);
 
 // Matches schemas.AdminCreateSchema

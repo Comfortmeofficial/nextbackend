@@ -77,6 +77,18 @@ export async function getAdmin(id: number): Promise<AdminDto | null> {
   return row ? toDto(row) : null;
 }
 
+// Lightweight roster for ride/marshal assignment UI — active bus_marshal
+// accounts only, not the full admin list (ops staff assigning marshals to
+// trips shouldn't need visibility into e.g. super_admin accounts).
+export async function listMarshals(): Promise<AdminDto[]> {
+  await ensureAdminSchema();
+  const pool = getAdminPool();
+  const { rows } = await pool.query<AdminRow>(
+    `SELECT * FROM admins WHERE deleted_at IS NULL AND is_active = true AND role = 'BUS_MARSHAL' ORDER BY first_name, last_name`,
+  );
+  return rows.map(toDto);
+}
+
 export async function updateAdmin(id: number, input: AdminUpdateInput): Promise<AdminDto> {
   await ensureAdminSchema();
   const row = await findActiveById(id);

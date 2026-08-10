@@ -86,6 +86,8 @@ export interface RideRow {
   booked_seats: number;
   status: RideStatus;
   boarding_code: string;
+  marshal_admin_id: number | null;
+  marshal_name: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -134,6 +136,8 @@ export interface RideDto {
   status: RideStatus;
   route: RouteDto;
   seats?: RideSeatDto[];
+  marshal_admin_id: number | null;
+  marshal_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -178,6 +182,40 @@ export interface BookingDto {
   ride: RideDto;
   created_at: string;
   updated_at: string;
+}
+
+export type ChatSenderType = "customer" | "marshal";
+
+export interface ChatMessageRow {
+  id: number;
+  ride_id: number;
+  user_id: number;
+  sender_type: ChatSenderType;
+  message: string;
+  created_at: Date;
+}
+
+export interface ChatMessageDto {
+  id: number;
+  ride_id: number;
+  user_id: number;
+  sender_type: ChatSenderType;
+  message: string;
+  created_at: string;
+}
+
+export interface PassengerDto {
+  booking_id: number;
+  reference: string;
+  seat_number: string;
+  status: BookingStatus;
+  is_on_board: boolean;
+  pickup_stop_id: number | null;
+  user_id: number;
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+  email: string;
 }
 
 export type RentalStatus =
