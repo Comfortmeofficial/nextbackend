@@ -66,6 +66,8 @@ function rideRowToDto(ride: RideRow, route: NonNullable<Awaited<ReturnType<typeo
     ...(seats !== undefined ? { seats } : {}),
     marshal_admin_id: ride.marshal_admin_id,
     marshal_name: ride.marshal_name,
+    driver_row: ride.driver_row,
+    driver_col: ride.driver_col,
     created_at: ride.created_at.toISOString(),
     updated_at: ride.updated_at.toISOString(),
   };
@@ -103,6 +105,8 @@ export interface CreateRideInput {
   fare: number;
   totalSeats: number;
   seatDefs: SeatDef[];
+  driverRow: number | null;
+  driverCol: number | null;
 }
 
 export async function createRide(input: CreateRideInput): Promise<RideDto> {
@@ -114,8 +118,8 @@ export async function createRide(input: CreateRideInput): Promise<RideDto> {
     const { rows } = await client.query<RideRow>(
       `INSERT INTO rides (
          route_id, bus_id, driver_id, driver_name, driver_rating, bus_plate, bus_model,
-         departure_time, arrival_time, fare, total_seats, status
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'scheduled')
+         departure_time, arrival_time, fare, total_seats, status, driver_row, driver_col
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'scheduled', $12, $13)
        RETURNING *`,
       [
         input.routeId,
@@ -129,6 +133,8 @@ export async function createRide(input: CreateRideInput): Promise<RideDto> {
         input.arrivalTime,
         input.fare,
         input.totalSeats,
+        input.driverRow,
+        input.driverCol,
       ],
     );
     const ride = rows[0];

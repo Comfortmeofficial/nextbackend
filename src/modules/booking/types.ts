@@ -88,6 +88,8 @@ export interface RideRow {
   boarding_code: string;
   marshal_admin_id: number | null;
   marshal_name: string | null;
+  driver_row: number | null;
+  driver_col: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -138,6 +140,8 @@ export interface RideDto {
   seats?: RideSeatDto[];
   marshal_admin_id: number | null;
   marshal_name: string | null;
+  driver_row: number | null;
+  driver_col: number | null;
   created_at: string;
   updated_at: string;
 }

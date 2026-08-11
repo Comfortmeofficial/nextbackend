@@ -109,6 +109,12 @@ export function ensureBookingSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_rides_deleted_at ON rides (deleted_at);
       ALTER TABLE rides ADD COLUMN IF NOT EXISTS marshal_admin_id INTEGER;
       ALTER TABLE rides ADD COLUMN IF NOT EXISTS marshal_name VARCHAR(255);
+      -- The driver's grid position from the bus layout admins configure —
+      -- captured at ride-creation time since seat_type='driver' cells are
+      -- deliberately excluded from ride_seats (not a bookable seat) and
+      -- would otherwise be unrecoverable once a ride exists.
+      ALTER TABLE rides ADD COLUMN IF NOT EXISTS driver_row INTEGER;
+      ALTER TABLE rides ADD COLUMN IF NOT EXISTS driver_col INTEGER;
       CREATE INDEX IF NOT EXISTS idx_rides_marshal_admin_id ON rides (marshal_admin_id);
 
       CREATE TABLE IF NOT EXISTS ride_seats (

@@ -46,9 +46,19 @@ export async function POST(request: NextRequest) {
     }
 
     const seatDefs: SeatDef[] = [];
+    let driverRow: number | null = null;
+    let driverCol: number | null = null;
     if (bus.seats) {
       for (const s of bus.seats) {
         const seatType = s.seat_type || "standard";
+        // seat_type='driver' cells are excluded from seatDefs (not a
+        // bookable seat) but the mobile app still needs their position to
+        // draw the steering-wheel icon where the admin actually placed it,
+        // rather than guessing — capture it before it's filtered out.
+        if (seatType === "driver") {
+          driverRow = s.row;
+          driverCol = s.col;
+        }
         if (!s.is_seat || NON_BOOKABLE.has(seatType)) continue;
         seatDefs.push({ seat_number: s.seat_number, row: s.row, col: s.col, seat_type: seatType });
       }
@@ -68,6 +78,8 @@ export async function POST(request: NextRequest) {
       fare: input.fare,
       totalSeats,
       seatDefs,
+      driverRow,
+      driverCol,
     });
     return NextResponse.json(ride, { status: 201 });
   } catch (error) {
