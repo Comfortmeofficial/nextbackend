@@ -32,21 +32,21 @@ const PURPOSE_LABELS: Record<string, string> = {
 
 export async function sendOtpNotification(data: z.infer<typeof otpNotificationSchema>) {
   const label = PURPOSE_LABELS[data.purpose] ?? data.purpose;
-  const smsBody = `Your Comfort Me ${label} OTP is: ${data.otp}. Valid for 10 minutes. Do not share.`;
+  const smsBody = `Your Comfortme ${label} OTP is: ${data.otp}. Valid for 10 minutes. Do not share.`;
   const pushTitle = "Your OTP Code";
-  const pushBody = `${data.otp} is your Comfort Me ${label} code. Valid for 10 minutes.`;
+  const pushBody = `${data.otp} is your Comfortme ${label} code. Valid for 10 minutes.`;
   const emailHtml = `
   <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
-    <h1 style="color:#111827;font-size:22px;margin-bottom:8px;">Your Comfort Me verification code</h1>
+    <h1 style="color:#111827;font-size:22px;margin-bottom:8px;">Your Comfortme verification code</h1>
     <p style="color:#6b7280;font-size:16px;">Use this code to complete your ${label}:</p>
-    <p style="font-size:32px;font-weight:bold;letter-spacing:4px;color:#f97316;margin:24px 0;">${data.otp}</p>
+    <p style="font-size:32px;font-weight:bold;letter-spacing:4px;color:#0058BC;margin:24px 0;">${data.otp}</p>
     <p style="color:#9ca3af;font-size:13px;">This code expires in 10 minutes. If you didn't request this, you can safely ignore this email.</p>
   </div>
   `;
 
   if (data.phone) await sendSms(data.phone, smsBody);
   if (data.push_token) await sendPush(data.push_token, pushTitle, pushBody, { type: "otp", purpose: data.purpose });
-  if (data.email) await sendEmail(data.email, `Your Comfort Me ${label} code`, emailHtml);
+  if (data.email) await sendEmail(data.email, `Your Comfortme ${label} code`, emailHtml);
 
   await storeNotification(data.user_id, "otp", pushTitle, pushBody);
   return { message: "OTP notification sent", purpose: data.purpose };
@@ -104,7 +104,7 @@ export async function sendPaymentNotification(data: z.infer<typeof paymentNotifi
 export async function sendRideReminder(data: z.infer<typeof rideReminderSchema>) {
   const title = "Your trip is coming up! \u{1F68C}";
   const body = `Departure at ${data.departure_time}. Please arrive early.`;
-  const smsBody = `Reminder: Your Comfort Me trip departs at ${data.departure_time}. Please arrive early. Ref: Ride #${data.ride_id}.`;
+  const smsBody = `Reminder: Your Comfortme trip departs at ${data.departure_time}. Please arrive early. Ref: Ride #${data.ride_id}.`;
 
   if (data.phone) await sendSms(data.phone, smsBody);
   if (data.push_token) await sendPush(data.push_token, title, body, { type: "ride_reminder", ride_id: data.ride_id });
@@ -211,7 +211,7 @@ export async function sendWaitlistNotification(data: z.infer<typeof waitlistNoti
   <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
     <h1 style="color:#111827;font-size:24px;margin-bottom:8px;">You're on the list, ${firstName}! \u{1F389}</h1>
     <p style="color:#6b7280;font-size:16px;line-height:1.6;">
-      Thanks for joining the <strong>Comfort Me</strong> waitlist. You're one step closer to a better commute.
+      Thanks for joining the <strong>Comfortme</strong> waitlist. You're one step closer to a better commute.
     </p>
     <p style="color:#6b7280;font-size:16px;line-height:1.6;">
       We'll notify you as soon as we launch in your city. Early members get guaranteed seating and exclusive discounts.
@@ -227,6 +227,6 @@ export async function sendWaitlistNotification(data: z.infer<typeof waitlistNoti
   </div>
   `;
 
-  await sendEmail(data.email, "You're on the Comfort Me waitlist!", htmlBody);
+  await sendEmail(data.email, "You're on the Comfortme waitlist!", htmlBody);
   return { message: "Waitlist confirmation sent" };
 }
