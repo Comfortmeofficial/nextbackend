@@ -5,7 +5,7 @@ const RESEND_API_URL = "https://api.resend.com/emails";
 export async function sendEmail(to: string, subject: string, htmlBody: string): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY || "";
   const fromEmail = process.env.RESEND_FROM_EMAIL || "noreply@comfortmeng.com";
-  const fromName = process.env.RESEND_FROM_NAME || "Comfort Me";
+  const fromName = process.env.RESEND_FROM_NAME || "Comfortme";
 
   if (!apiKey) {
     console.info(`Email (resend unavailable): to=${to} subject=${subject}`);
