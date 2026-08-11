@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { resyncRideSeatsForBus } from "@/modules/booking/repository/rides";
 import { busErrorResponse } from "@/modules/buses/errors";
 import { deleteBus, getBus, updateBus } from "@/modules/buses/repository";
 import { parseBusId, updateBusSchema } from "@/modules/buses/validation";
@@ -25,6 +26,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const id = parseBusId((await params).id);
     const body = updateBusSchema.parse(await request.json());
     const bus = await updateBus(id, body);
+    if (body.layout) {
+      try {
+        await resyncRideSeatsForBus(id, bus.layout.seats);
+      } catch {
+        // Best-effort — a resync failure must never fail the layout save
+        // itself; the bus's own layout is already committed at this point.
+      }
+    }
     return NextResponse.json(bus);
   } catch (error) {
     return busErrorResponse(error);

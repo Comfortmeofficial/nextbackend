@@ -2,11 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { fetchBusInfo, fetchDriverInfo } from "@/modules/booking/external";
-import { createRide, listRides } from "@/modules/booking/repository/rides";
-import type { SeatDef } from "@/modules/booking/repository/rides";
+import { createRide, listRides, seatDefsFromBusSeats } from "@/modules/booking/repository/rides";
 import { listQuerySchema, rideInputSchema } from "@/modules/booking/validation";
-
-const NON_BOOKABLE = new Set(["driver", "walkway", "empty"]);
 
 function parseRfc3339(value: string, field: string): Date {
   // Go's time.Parse(time.RFC3339, ...) is strict about the offset/format;
@@ -45,24 +42,7 @@ export async function POST(request: NextRequest) {
       throw new ApiError(400, err instanceof Error ? err.message : String(err));
     }
 
-    const seatDefs: SeatDef[] = [];
-    let driverRow: number | null = null;
-    let driverCol: number | null = null;
-    if (bus.seats) {
-      for (const s of bus.seats) {
-        const seatType = s.seat_type || "standard";
-        // seat_type='driver' cells are excluded from seatDefs (not a
-        // bookable seat) but the mobile app still needs their position to
-        // draw the steering-wheel icon where the admin actually placed it,
-        // rather than guessing — capture it before it's filtered out.
-        if (seatType === "driver") {
-          driverRow = s.row;
-          driverCol = s.col;
-        }
-        if (!s.is_seat || NON_BOOKABLE.has(seatType)) continue;
-        seatDefs.push({ seat_number: s.seat_number, row: s.row, col: s.col, seat_type: seatType });
-      }
-    }
+    const { seatDefs, driverRow, driverCol } = seatDefsFromBusSeats(bus.seats);
     const totalSeats = seatDefs.length > 0 ? seatDefs.length : input.total_seats;
 
     const ride = await createRide({

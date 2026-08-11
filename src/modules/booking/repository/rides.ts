@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/http-errors";
 import { ensureBookingSchema, getBookingPool } from "../db";
+import type { BusSeatDef } from "../external";
 import { loadFullRoute } from "./routes";
 import type { RideDto, RideRow, RideSeatDto, RideSeatRow, RideStatus } from "../types";
 
@@ -80,6 +81,35 @@ export interface SeatDef {
   seat_type: string;
 }
 
+const NON_BOOKABLE = new Set(["driver", "walkway", "empty"]);
+
+// seat_type='driver' cells are excluded from ride_seats (not a bookable
+// seat) but the mobile app still needs their position to draw the
+// steering-wheel icon where the admin actually placed it, rather than
+// guessing — captured here before it's filtered out. Shared between
+// ride creation and the layout-change resync below so both stay in sync.
+export function seatDefsFromBusSeats(seats: BusSeatDef[] | null): {
+  seatDefs: SeatDef[];
+  driverRow: number | null;
+  driverCol: number | null;
+} {
+  const seatDefs: SeatDef[] = [];
+  let driverRow: number | null = null;
+  let driverCol: number | null = null;
+  if (seats) {
+    for (const s of seats) {
+      const seatType = s.seat_type || "standard";
+      if (seatType === "driver") {
+        driverRow = s.row;
+        driverCol = s.col;
+      }
+      if (!s.is_seat || NON_BOOKABLE.has(seatType)) continue;
+      seatDefs.push({ seat_number: s.seat_number, row: s.row, col: s.col, seat_type: seatType });
+    }
+  }
+  return { seatDefs, driverRow, driverCol };
+}
+
 function generateSeats(total: number): SeatDef[] {
   const cols = 4;
   const seats: SeatDef[] = [];
@@ -154,6 +184,53 @@ export async function createRide(input: CreateRideInput): Promise<RideDto> {
   } finally {
     client.release();
   }
+}
+
+// A ride snapshots the bus's seat layout at creation time so an
+// already-booked or in-progress trip is never disrupted by a later layout
+// change. But a ride nobody has booked into yet has no reason to stay
+// stale — whenever an admin saves a new layout, every affected ride that's
+// still fully unbooked and not yet underway gets its seats regenerated to
+// match. Rides with any booking, or past 'scheduled', are left untouched.
+export async function resyncRideSeatsForBus(busId: number, seats: BusSeatDef[] | null): Promise<number[]> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const { rows: candidates } = await pool.query<{ id: number }>(
+    `SELECT id FROM rides WHERE bus_id = $1 AND deleted_at IS NULL AND status = 'scheduled' AND booked_seats = 0`,
+    [busId],
+  );
+  if (candidates.length === 0) return [];
+
+  const { seatDefs, driverRow, driverCol } = seatDefsFromBusSeats(seats);
+  const totalSeats = seatDefs.length;
+  const resynced: number[] = [];
+
+  for (const { id: rideId } of candidates) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM ride_seats WHERE ride_id = $1`, [rideId]);
+      for (const seat of seatDefs) {
+        await client.query(
+          `INSERT INTO ride_seats (ride_id, seat_number, "row", col, seat_type, status)
+           VALUES ($1, $2, $3, $4, $5, 'available')`,
+          [rideId, seat.seat_number, seat.row, seat.col, seat.seat_type],
+        );
+      }
+      await client.query(
+        `UPDATE rides SET total_seats = $2, driver_row = $3, driver_col = $4, updated_at = now() WHERE id = $1`,
+        [rideId, totalSeats, driverRow, driverCol],
+      );
+      await client.query("COMMIT");
+      resynced.push(rideId);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+  return resynced;
 }
 
 export async function listRides(skip: number, limit: number, status?: string): Promise<RideDto[]> {
