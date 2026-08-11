@@ -24,10 +24,29 @@ const seatDefinitionSchema = z.object({
   seat_type: z.string().default(""),
 });
 
+// A block is a draggable section of the layout (e.g. "left side", "back
+// row") — admin_web_app's designer positions blocks on a canvas and flattens
+// them into the top-level `seats` array (translating each seat's row/col by
+// the block's x/y offset) before saving, so every other consumer of a bus's
+// layout (ride creation, the mobile seat picker, capacity calculation) only
+// ever needs to read `seats` and stays completely unaware blocks exist.
+// `blocks` itself is stored purely so the designer can be re-opened and
+// re-edited with the same section layout instead of one flattened grid.
+const seatBlockSchema = z.object({
+  id: z.string(),
+  label: z.string().optional(),
+  x: z.number().int(),
+  y: z.number().int(),
+  rows: z.number().int(),
+  cols: z.number().int(),
+  seats: z.array(seatDefinitionSchema),
+});
+
 const seatLayoutSchema = z.object({
   rows: z.number().int(),
   cols: z.number().int(),
   seats: z.array(seatDefinitionSchema),
+  blocks: z.array(seatBlockSchema).optional(),
 });
 
 // Matches CreateBusRequest
