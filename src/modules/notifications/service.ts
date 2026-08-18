@@ -42,7 +42,7 @@ export async function sendOtpNotification(data: z.infer<typeof otpNotificationSc
   const emailHtml = `
   <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
     ${EMAIL_LOGO_HTML}
-    <h1 style="color:#111827;font-size:22px;margin-bottom:8px;">Your Comfortme verification code</h1>
+    <h1 style="color:#0058BC;font-size:22px;margin-bottom:8px;">Your Comfortme verification code</h1>
     <p style="color:#6b7280;font-size:16px;">Use this code to complete your ${label}:</p>
     <p style="font-size:32px;font-weight:bold;letter-spacing:4px;color:#0058BC;margin:24px 0;">${data.otp}</p>
     <p style="color:#9ca3af;font-size:13px;">This code expires in 10 minutes. If you didn't request this, you can safely ignore this email.</p>
@@ -64,7 +64,7 @@ export async function sendBookingNotification(data: z.infer<typeof bookingNotifi
   const emailHtml = `
   <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
     ${EMAIL_LOGO_HTML}
-    <h1 style="color:#111827;font-size:22px;margin-bottom:8px;">Booking Confirmed! \u{1F389}</h1>
+    <h1 style="color:#0058BC;font-size:22px;margin-bottom:8px;">Booking Confirmed! \u{1F389}</h1>
     <p style="color:#6b7280;font-size:16px;">Reference: <strong>${data.reference}</strong></p>
     <p style="color:#6b7280;font-size:16px;">Amount: NGN ${formatNaira(data.amount)}</p>
     <p style="color:#9ca3af;font-size:13px;">Have a comfortable ride!</p>
@@ -94,7 +94,7 @@ export async function sendPaymentNotification(data: z.infer<typeof paymentNotifi
   const emailHtml = `
   <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
     ${EMAIL_LOGO_HTML}
-    <h1 style="color:#111827;font-size:22px;margin-bottom:8px;">${title}</h1>
+    <h1 style="color:#0058BC;font-size:22px;margin-bottom:8px;">${title}</h1>
     <p style="color:#6b7280;font-size:16px;">Amount: NGN ${formatNaira(data.amount)}</p>
     <p style="color:#6b7280;font-size:16px;">Reference: <strong>${data.reference}</strong></p>
   </div>
@@ -217,7 +217,7 @@ export async function sendWaitlistNotification(data: z.infer<typeof waitlistNoti
   const htmlBody = `
   <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
     ${EMAIL_LOGO_HTML}
-    <h1 style="color:#111827;font-size:24px;margin-bottom:8px;">You're on the list, ${firstName}! \u{1F389}</h1>
+    <h1 style="color:#0058BC;font-size:24px;margin-bottom:8px;">You're on the list, ${firstName}! \u{1F389}</h1>
     <p style="color:#6b7280;font-size:16px;line-height:1.6;">
       Thanks for joining the <strong>Comfortme</strong> waitlist. You're one step closer to a better commute.
     </p>
