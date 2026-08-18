@@ -128,3 +128,33 @@ export async function fetchRouteETA(
     distanceKm: (leg.distance?.value ?? 0) / 1000,
   };
 }
+
+interface GeocodeResponse {
+  status: string;
+  results?: Array<{
+    geometry?: { location?: { lat: number; lng: number } };
+  }>;
+}
+
+// Turns an admin-entered "name, state" into real coordinates when a
+// location/destination is created, so a route between two of them later has
+// something meaningful for fetchRouteETA to compute a distance from. Returns
+// null (rather than throwing) on any failure — geocoding is a nice-to-have
+// at creation time, not a reason to block the admin from saving the place.
+export async function fetchGeocode(address: string): Promise<{ latitude: number; longitude: number } | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return null;
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+
+  let data: GeocodeResponse;
+  try {
+    const response = await fetch(url);
+    data = await response.json();
+  } catch {
+    return null;
+  }
+
+  const location = data.results?.[0]?.geometry?.location;
+  if (data.status !== "OK" || !location) return null;
+  return { latitude: location.lat, longitude: location.lng };
+}

@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/http-errors";
+import { fetchGeocode } from "../external";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import type { PlaceDto, PlaceRow } from "../types";
 import type { PlaceInput } from "../validation";
@@ -32,17 +33,29 @@ function toDto(row: PlaceRow): PlaceDto {
   };
 }
 
-export function makePlaceRepo(kind: PlaceKind) {
+// Only locations/destinations feed route distance calculation — stops don't
+// need a real-world geocode, so this stays opt-in rather than automatic for
+// every place kind.
+export function makePlaceRepo(kind: PlaceKind, options: { geocode?: boolean } = {}) {
   const table = kind;
+  const shouldGeocode = options.geocode ?? false;
 
   return {
     async create(input: PlaceInput): Promise<PlaceDto> {
       await ensureBookingSchema();
       const pool = getBookingPool();
+      let { latitude, longitude } = input;
+      if (shouldGeocode && latitude === 0 && longitude === 0) {
+        const geocoded = await fetchGeocode(`${input.name}, ${input.state}`);
+        if (geocoded) {
+          latitude = geocoded.latitude;
+          longitude = geocoded.longitude;
+        }
+      }
       try {
         const { rows } = await pool.query<PlaceRow>(
           `INSERT INTO ${table} (name, state, latitude, longitude) VALUES ($1, $2, $3, $4) RETURNING *`,
-          [input.name, input.state, input.latitude, input.longitude],
+          [input.name, input.state, latitude, longitude],
         );
         return toDto(rows[0]);
       } catch {
@@ -99,6 +112,6 @@ export function makePlaceRepo(kind: PlaceKind) {
   };
 }
 
-export const locationRepo = makePlaceRepo("locations");
-export const destinationRepo = makePlaceRepo("destinations");
+export const locationRepo = makePlaceRepo("locations", { geocode: true });
+export const destinationRepo = makePlaceRepo("destinations", { geocode: true });
 export const stopRepo = makePlaceRepo("stops");
