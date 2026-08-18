@@ -13,7 +13,7 @@ export function getBookingPool(): Pool {
     if (!connectionString) {
       throw new Error("BOOKING_DATABASE_URL is not set");
     }
-    global.__bookingPool = new Pool({ connectionString });
+    global.__bookingPool = new Pool({ connectionString, max: 3 });
   }
   return global.__bookingPool;
 }
@@ -144,11 +144,15 @@ export function ensureBookingSchema(): Promise<void> {
         status VARCHAR(20) NOT NULL DEFAULT 'pending',
         is_on_board BOOLEAN NOT NULL DEFAULT false,
         pickup_stop_id INTEGER,
+        rating SMALLINT,
+        rating_comment TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         deleted_at TIMESTAMPTZ
       );
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_stop_id INTEGER;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rating SMALLINT;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rating_comment TEXT;
       CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings (user_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_ride_id ON bookings (ride_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_group_reference ON bookings (group_reference);

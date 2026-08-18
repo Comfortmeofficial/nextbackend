@@ -90,6 +90,11 @@ export type BulkBookingInput = z.infer<typeof bulkBookingInputSchema>;
 
 export const boardingCodeInputSchema = z.object({ code: requiredString });
 
+export const rateDriverInputSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().trim().max(1000).optional(),
+});
+
 const rentalPaymentMethodSchema = z.enum(["wallet", "card", "bank", ""]);
 
 export const rentalInputSchema = z.object({

@@ -13,7 +13,7 @@ export function getDriversPool(): Pool {
     if (!connectionString) {
       throw new Error("DRIVER_DATABASE_URL is not set");
     }
-    global.__driversPool = new Pool({ connectionString });
+    global.__driversPool = new Pool({ connectionString, max: 3 });
   }
   return global.__driversPool;
 }
@@ -49,6 +49,7 @@ export function ensureDriversSchema(): Promise<void> {
         verification_status VARCHAR(50) NOT NULL DEFAULT 'pending',
         is_active BOOLEAN NOT NULL DEFAULT true,
         rating NUMERIC(3, 2) NOT NULL DEFAULT 5.0,
+        rating_count INTEGER NOT NULL DEFAULT 0,
         total_trips INTEGER NOT NULL DEFAULT 0,
         assigned_bus_id INTEGER,
         current_ride_id INTEGER,
@@ -56,6 +57,7 @@ export function ensureDriversSchema(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         deleted_at TIMESTAMPTZ
       );
+      ALTER TABLE drivers ADD COLUMN IF NOT EXISTS rating_count INTEGER NOT NULL DEFAULT 0;
     `).then(() => undefined);
   }
   return global.__driversSchemaReady;

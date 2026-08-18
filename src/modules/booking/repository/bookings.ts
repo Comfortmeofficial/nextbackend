@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { ApiError } from "@/lib/http-errors";
 import { getUser } from "@/modules/users/repository";
+import { recordRating } from "@/modules/drivers/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import type { BookingDto, BookingRow, PassengerDto, PaymentMethod } from "../types";
 import { getRideRow } from "./rides";
@@ -25,6 +26,8 @@ async function toDto(row: BookingRow): Promise<BookingDto> {
     status: row.status,
     is_on_board: row.is_on_board,
     pickup_stop_id: row.pickup_stop_id,
+    rating: row.rating,
+    rating_comment: row.rating_comment,
     // Nested ride never carries `seats` here — the source's booking
     // preloads (Ride.Route.*) never touch Ride.Seats either.
     ride: ride
@@ -290,12 +293,59 @@ export async function completeBooking(id: number): Promise<BookingDto> {
   return getBooking(id);
 }
 
+// Rider-submitted, one per booking — checked against the booking's own
+// user_id (not just "any authenticated rider") so a booking can't be rated
+// twice or by someone other than the passenger who took the trip.
+export async function rateDriver(
+  id: number,
+  userId: number,
+  rating: number,
+  comment?: string,
+): Promise<BookingDto> {
+  await ensureBookingSchema();
+  const booking = await getBookingRow(id);
+  if (!booking) {
+    throw new ApiError(404, "Booking not found");
+  }
+  if (booking.user_id !== userId) {
+    throw new ApiError(403, "Not your booking");
+  }
+  if (booking.status !== "completed") {
+    throw new ApiError(400, "Ride not completed yet");
+  }
+  if (booking.rating != null) {
+    throw new ApiError(400, "Already rated");
+  }
+  const ride = await getRideRow(booking.ride_id);
+  if (!ride) {
+    throw new ApiError(404, "Ride not found");
+  }
+
+  const pool = getBookingPool();
+  await pool.query(
+    `UPDATE bookings SET rating = $2, rating_comment = $3, updated_at = now() WHERE id = $1`,
+    [id, rating, comment ?? null],
+  );
+  await recordRating(ride.driver_id, rating);
+  return getBooking(id);
+}
+
 // Loads the booking + its ride's current boarding_code, so callers don't
 // need to hit the DB twice to check a rider-supplied code.
+//
+// Two independent codes are accepted here: the ride's shared boarding_code
+// (the rider's own self-service path — they read/scan it from the driver,
+// proving physical proximity with no staff involved) and this specific
+// booking's own `reference` (the marshal's path — they scan a QR the rider's
+// app displays and physically confirm boarding themselves, so the marshal's
+// presence is the security control, not the code's secrecy).
 export async function checkBoardingCode(id: number, code: string): Promise<BookingRow> {
   const booking = await getBookingRow(id);
   if (!booking) {
     throw new Error("booking not found");
+  }
+  if (booking.reference === code) {
+    return booking;
   }
   const ride = await getRideRow(booking.ride_id);
   if (!ride || !ride.boarding_code || ride.boarding_code !== code) {

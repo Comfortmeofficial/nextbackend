@@ -164,6 +164,8 @@ export interface BookingRow {
   status: BookingStatus;
   is_on_board: boolean;
   pickup_stop_id: number | null;
+  rating: number | null;
+  rating_comment: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -183,6 +185,8 @@ export interface BookingDto {
   status: BookingStatus;
   is_on_board: boolean;
   pickup_stop_id: number | null;
+  rating: number | null;
+  rating_comment: string | null;
   ride: RideDto;
   created_at: string;
   updated_at: string;

@@ -216,6 +216,24 @@ export async function assignRide(id: number, rideId: number): Promise<DriverDto>
   return toDto(rows[0]);
 }
 
+// Recomputes the driver's aggregate rating as a running mean over every
+// rating they've actually received. total_trips isn't usable as the
+// denominator here — most completed trips never get rated, so weighting by
+// it would silently understate how much a single new rating should move
+// the average.
+export async function recordRating(driverId: number, rating: number): Promise<void> {
+  await ensureDriversSchema();
+  const pool = getDriversPool();
+  await pool.query(
+    `UPDATE drivers
+     SET rating = ROUND((rating * rating_count + $2) / (rating_count + 1), 2),
+         rating_count = rating_count + 1,
+         updated_at = now()
+     WHERE id = $1`,
+    [driverId, rating],
+  );
+}
+
 export async function completeRide(id: number): Promise<DriverDto> {
   await ensureDriversSchema();
   const row = await findActiveById(id);
