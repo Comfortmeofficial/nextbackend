@@ -24,6 +24,10 @@ import type { z } from "zod";
 // now that this service lives in the same app — same "collapse the hop once
 // colocated" reasoning used for user_service.
 
+const EMAIL_LOGO_HTML =
+  '<img src="https://admin.comfortmeng.com/logo-short.png" alt="Comfortme" ' +
+  'width="40" height="40" style="height:40px;width:40px;margin-bottom:16px;display:block;" />';
+
 const PURPOSE_LABELS: Record<string, string> = {
   signup: "account verification",
   password_reset: "password reset",
@@ -37,6 +41,7 @@ export async function sendOtpNotification(data: z.infer<typeof otpNotificationSc
   const pushBody = `${data.otp} is your Comfortme ${label} code. Valid for 10 minutes.`;
   const emailHtml = `
   <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
+    ${EMAIL_LOGO_HTML}
     <h1 style="color:#111827;font-size:22px;margin-bottom:8px;">Your Comfortme verification code</h1>
     <p style="color:#6b7280;font-size:16px;">Use this code to complete your ${label}:</p>
     <p style="font-size:32px;font-weight:bold;letter-spacing:4px;color:#0058BC;margin:24px 0;">${data.otp}</p>
@@ -58,6 +63,7 @@ export async function sendBookingNotification(data: z.infer<typeof bookingNotifi
   const smsBody = `Booking Confirmed! Reference: ${data.reference}. Amount: NGN ${formatNaira(data.amount)}. Have a comfortable ride!`;
   const emailHtml = `
   <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
+    ${EMAIL_LOGO_HTML}
     <h1 style="color:#111827;font-size:22px;margin-bottom:8px;">Booking Confirmed! \u{1F389}</h1>
     <p style="color:#6b7280;font-size:16px;">Reference: <strong>${data.reference}</strong></p>
     <p style="color:#6b7280;font-size:16px;">Amount: NGN ${formatNaira(data.amount)}</p>
@@ -87,6 +93,7 @@ export async function sendPaymentNotification(data: z.infer<typeof paymentNotifi
   const body = `NGN ${formatNaira(data.amount)} · Ref: ${data.reference}`;
   const emailHtml = `
   <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
+    ${EMAIL_LOGO_HTML}
     <h1 style="color:#111827;font-size:22px;margin-bottom:8px;">${title}</h1>
     <p style="color:#6b7280;font-size:16px;">Amount: NGN ${formatNaira(data.amount)}</p>
     <p style="color:#6b7280;font-size:16px;">Reference: <strong>${data.reference}</strong></p>
@@ -209,6 +216,7 @@ export async function sendWaitlistNotification(data: z.infer<typeof waitlistNoti
   const firstName = data.full_name.trim().split(/\s+/)[0];
   const htmlBody = `
   <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
+    ${EMAIL_LOGO_HTML}
     <h1 style="color:#111827;font-size:24px;margin-bottom:8px;">You're on the list, ${firstName}! \u{1F389}</h1>
     <p style="color:#6b7280;font-size:16px;line-height:1.6;">
       Thanks for joining the <strong>Comfortme</strong> waitlist. You're one step closer to a better commute.
