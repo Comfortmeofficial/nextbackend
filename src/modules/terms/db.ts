@@ -13,7 +13,7 @@ export function getTermsPool(): Pool {
     if (!connectionString) {
       throw new Error("TERMS_DATABASE_URL is not set");
     }
-    global.__termsPool = new Pool({ connectionString });
+    global.__termsPool = new Pool({ connectionString, max: 3 });
   }
   return global.__termsPool;
 }

@@ -13,7 +13,7 @@ export function getAdminPool(): Pool {
     if (!connectionString) {
       throw new Error("ADMIN_DATABASE_URL is not set");
     }
-    global.__adminPool = new Pool({ connectionString });
+    global.__adminPool = new Pool({ connectionString, max: 3 });
   }
   return global.__adminPool;
 }

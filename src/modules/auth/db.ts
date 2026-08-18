@@ -20,6 +20,7 @@ function getAuthPool(): Pool {
       connectionTimeoutMillis: 5000,
       idleTimeoutMillis: 30000,
       statement_timeout: 10000,
+      max: 3,
     });
   }
   return global.__authPool;

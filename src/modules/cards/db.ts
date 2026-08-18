@@ -13,7 +13,7 @@ export function getCardsPool(): Pool {
     if (!connectionString) {
       throw new Error("CARD_DATABASE_URL is not set");
     }
-    global.__cardsPool = new Pool({ connectionString });
+    global.__cardsPool = new Pool({ connectionString, max: 3 });
   }
   return global.__cardsPool;
 }

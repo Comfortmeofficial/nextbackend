@@ -17,7 +17,7 @@ declare global {
 export function getNotificationsPool(): Pool | null {
   if (global.__notificationsPool === undefined) {
     const connectionString = process.env.NOTIFICATION_DATABASE_URL;
-    global.__notificationsPool = connectionString ? new Pool({ connectionString }) : null;
+    global.__notificationsPool = connectionString ? new Pool({ connectionString, max: 3 }) : null;
   }
   return global.__notificationsPool;
 }

@@ -13,7 +13,7 @@ export function getUsersPool(): Pool {
     if (!connectionString) {
       throw new Error("USER_DATABASE_URL is not set");
     }
-    global.__usersPool = new Pool({ connectionString });
+    global.__usersPool = new Pool({ connectionString, max: 3 });
   }
   return global.__usersPool;
 }

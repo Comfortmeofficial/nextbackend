@@ -13,7 +13,7 @@ export function getBusesPool(): Pool {
     if (!connectionString) {
       throw new Error("BUS_DATABASE_URL is not set");
     }
-    global.__busesPool = new Pool({ connectionString });
+    global.__busesPool = new Pool({ connectionString, max: 3 });
   }
   return global.__busesPool;
 }

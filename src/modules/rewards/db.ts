@@ -13,7 +13,7 @@ export function getRewardsPool(): Pool {
     if (!connectionString) {
       throw new Error("REWARD_DATABASE_URL is not set");
     }
-    global.__rewardsPool = new Pool({ connectionString });
+    global.__rewardsPool = new Pool({ connectionString, max: 3 });
   }
   return global.__rewardsPool;
 }

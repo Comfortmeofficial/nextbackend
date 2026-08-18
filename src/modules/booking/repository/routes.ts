@@ -124,8 +124,17 @@ export async function listRoutes(skip: number, limit: number): Promise<RouteDto[
     `SELECT id FROM routes WHERE deleted_at IS NULL OFFSET $1 LIMIT $2`,
     [skip, limit],
   );
-  const routes = await Promise.all(rows.map((r) => loadFullRoute(r.id)));
-  return routes.filter((r): r is RouteDto => r !== null);
+  // Sequential, not Promise.all — loadFullRoute makes 4+ queries per route,
+  // so firing all of them at once for N routes bursts to 4N concurrent
+  // connections against a pool.Pool with no explicit max (defaults to 10),
+  // which was timing out (ETIMEDOUT) against Neon's pooler once there were
+  // enough routes to cross that threshold.
+  const routes: RouteDto[] = [];
+  for (const row of rows) {
+    const route = await loadFullRoute(row.id);
+    if (route) routes.push(route);
+  }
+  return routes;
 }
 
 export async function getRoute(id: number): Promise<RouteDto> {

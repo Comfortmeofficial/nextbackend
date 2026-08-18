@@ -13,7 +13,7 @@ export function getSyncPool(): Pool {
     if (!connectionString) {
       throw new Error("SYNC_DATABASE_URL is not set");
     }
-    global.__syncPool = new Pool({ connectionString });
+    global.__syncPool = new Pool({ connectionString, max: 3 });
   }
   return global.__syncPool;
 }

@@ -13,7 +13,7 @@ export function getWalletPool(): Pool {
     if (!connectionString) {
       throw new Error("WALLET_DATABASE_URL is not set");
     }
-    global.__walletPool = new Pool({ connectionString });
+    global.__walletPool = new Pool({ connectionString, max: 3 });
   }
   return global.__walletPool;
 }

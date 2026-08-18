@@ -17,6 +17,7 @@ function getSubscriptionsPool(): Pool {
       connectionString:
         connectionString || "postgres://postgres:postgres@localhost:5432/subscription_service",
       ssl: connectionString ? { rejectUnauthorized: false } : false,
+      max: 3,
     });
   }
   return global.__subscriptionsPool;
