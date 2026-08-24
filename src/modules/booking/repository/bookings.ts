@@ -137,7 +137,10 @@ export async function createBooking(input: BookingSeatInput): Promise<BookingDto
 }
 
 // Books every seat in a single all-or-nothing transaction — if any seat is
-// unavailable, the whole batch rolls back and nothing is reserved.
+// unavailable, the whole batch rolls back and nothing is reserved. Inputs
+// may span multiple rides (e.g. a return-trip or multi-day booking paid for
+// in one go), so `rides.booked_seats` is incremented once per distinct ride
+// rather than assuming every seat in the batch belongs to the same ride.
 export async function createBookingsBulk(inputs: BookingSeatInput[]): Promise<BookingDto[]> {
   await ensureBookingSchema();
   const pool = getBookingPool();
@@ -148,10 +151,16 @@ export async function createBookingsBulk(inputs: BookingSeatInput[]): Promise<Bo
     for (const input of inputs) {
       bookings.push(await insertBookingRow(client, input));
     }
-    await client.query(`UPDATE rides SET booked_seats = booked_seats + $2 WHERE id = $1`, [
-      inputs[0].rideId,
-      inputs.length,
-    ]);
+    const seatCountByRide = new Map<number, number>();
+    for (const input of inputs) {
+      seatCountByRide.set(input.rideId, (seatCountByRide.get(input.rideId) ?? 0) + 1);
+    }
+    for (const [rideId, count] of seatCountByRide) {
+      await client.query(`UPDATE rides SET booked_seats = booked_seats + $2 WHERE id = $1`, [
+        rideId,
+        count,
+      ]);
+    }
     await client.query("COMMIT");
     return Promise.all(bookings.map(toDto));
   } catch (err) {
