@@ -37,7 +37,12 @@ export async function ensureNotificationsSchema(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        global.__notificationsSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__notificationsSchemaReady;
 }

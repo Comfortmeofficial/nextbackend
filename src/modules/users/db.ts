@@ -46,7 +46,15 @@ export function ensureUsersSchema(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         deleted_at TIMESTAMPTZ
       )
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        // Don't let a transient failure (cold-start DB blip, pool exhaustion)
+        // permanently poison every future request on this warm instance —
+        // clear the cache so the next call actually retries the schema check.
+        global.__usersSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__usersSchemaReady;
 }

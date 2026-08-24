@@ -51,7 +51,12 @@ export function ensureSubscriptionsSchema(): Promise<void> {
         expires_at TIMESTAMPTZ NOT NULL,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        global.__subscriptionsSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__subscriptionsSchemaReady;
 }

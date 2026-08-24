@@ -76,7 +76,12 @@ export function ensureAuthSchema(): Promise<void> {
         preference   VARCHAR(20),
         created_at   TIMESTAMPTZ DEFAULT NOW()
       );
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        global.__authSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__authSchemaReady;
 }

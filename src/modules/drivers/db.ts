@@ -58,7 +58,12 @@ export function ensureDriversSchema(): Promise<void> {
         deleted_at TIMESTAMPTZ
       );
       ALTER TABLE drivers ADD COLUMN IF NOT EXISTS rating_count INTEGER NOT NULL DEFAULT 0;
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        global.__driversSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__driversSchemaReady;
 }

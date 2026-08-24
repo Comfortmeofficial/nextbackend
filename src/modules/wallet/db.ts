@@ -50,7 +50,12 @@ export function ensureWalletSchema(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_transactions_wallet_id ON transactions (wallet_id);
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        global.__walletSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__walletSchemaReady;
 }

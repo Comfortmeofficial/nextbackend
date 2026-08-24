@@ -39,7 +39,12 @@ export function ensureCardsSchema(): Promise<void> {
         deleted_at TIMESTAMPTZ
       );
       CREATE INDEX IF NOT EXISTS idx_cards_user_id ON cards (user_id);
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        global.__cardsSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__cardsSchemaReady;
 }

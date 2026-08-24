@@ -34,7 +34,12 @@ export function ensureSyncSchema(): Promise<void> {
         error_message    TEXT,
         created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        global.__syncSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__syncSchemaReady;
 }

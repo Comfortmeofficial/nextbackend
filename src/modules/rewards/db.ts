@@ -86,7 +86,12 @@ export function ensureRewardsSchema(): Promise<void> {
         UNIQUE (user_id, milestone_id)
       );
       CREATE INDEX IF NOT EXISTS idx_referral_milestone_claims_user ON referral_milestone_claims (user_id);
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        global.__rewardsSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__rewardsSchemaReady;
 }

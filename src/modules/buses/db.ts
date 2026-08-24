@@ -33,7 +33,12 @@ export function ensureBusesSchema(): Promise<void> {
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        global.__busesSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__busesSchemaReady;
 }

@@ -42,7 +42,12 @@ export function ensureAdminSchema(): Promise<void> {
       ALTER TABLE admins DROP CONSTRAINT IF EXISTS admins_role_check;
       ALTER TABLE admins ADD CONSTRAINT admins_role_check
         CHECK (role IN ('SUPER_ADMIN', 'ADMIN', 'OPERATIONS_MANAGER', 'CUSTOMER_SUPPORT', 'FINANCE_OFFICER', 'BUS_MARSHAL'));
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        global.__adminSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__adminSchemaReady;
 }

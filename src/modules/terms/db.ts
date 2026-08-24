@@ -47,7 +47,15 @@ export function ensureTermsSchema(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       ALTER TABLE terms_and_conditions ADD COLUMN IF NOT EXISTS doc_type VARCHAR(20) NOT NULL DEFAULT 'terms';
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        // Don't let a transient failure (cold-start DB blip, pool exhaustion)
+        // permanently poison every future request on this warm instance —
+        // clear the cache so the next call actually retries the schema check.
+        global.__termsSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__termsSchemaReady;
 }
