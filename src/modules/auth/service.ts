@@ -287,6 +287,16 @@ export async function logout(token: string) {
   await query("UPDATE refresh_tokens SET revoked = TRUE WHERE token = $1", [token]);
 }
 
+// Called when an account is deleted or suspended so an already-issued
+// refresh token can't keep renewing a session for an account that should no
+// longer have access — deleteUser()/suspend only touch the users table,
+// which refreshTokens() never checks, so without this a deleted/suspended
+// user's session would otherwise keep refreshing indefinitely.
+export async function revokeAllRefreshTokensForUser(userId: number): Promise<void> {
+  await ensureAuthSchema();
+  await query("UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE", [userId]);
+}
+
 // ---------- Waitlist ----------
 
 export interface WaitlistInput {
