@@ -180,6 +180,8 @@ export function ensureBookingSchema(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS idx_rentals_user_id ON rentals (user_id);
       CREATE INDEX IF NOT EXISTS idx_rentals_deleted_at ON rentals (deleted_at);
+      ALTER TABLE rentals ADD COLUMN IF NOT EXISTS passenger_count INTEGER;
+      ALTER TABLE rentals ADD COLUMN IF NOT EXISTS duration VARCHAR(255);
 
       CREATE TABLE IF NOT EXISTS packages (
         id SERIAL PRIMARY KEY,
@@ -212,7 +214,12 @@ export function ensureBookingSchema(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_trip_chat_thread ON trip_chat_messages (ride_id, user_id, created_at);
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((err) => {
+        global.__bookingSchemaReady = undefined;
+        throw err;
+      });
   }
   return global.__bookingSchemaReady;
 }

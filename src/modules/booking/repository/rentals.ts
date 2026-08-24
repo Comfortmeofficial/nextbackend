@@ -16,6 +16,8 @@ function toDto(row: RentalRow): RentalDto {
     is_round_trip: row.is_round_trip,
     return_date: row.return_date,
     return_time: row.return_time,
+    passenger_count: row.passenger_count,
+    duration: row.duration,
     amount: row.amount,
     payment_method: row.payment_method,
     status: row.status,
@@ -36,6 +38,8 @@ export interface CreateRentalInput {
   isRoundTrip: boolean;
   returnDate: string;
   returnTime: string;
+  passengerCount?: number | null;
+  duration?: string | null;
   paymentMethod: RentalPaymentMethod;
 }
 
@@ -46,8 +50,9 @@ export async function createRental(input: CreateRentalInput): Promise<RentalDto>
     const { rows } = await pool.query<RentalRow>(
       `INSERT INTO rentals (
          user_id, pickup, destination, event_type, pickup_date, pickup_time, phone,
-         notes, is_round_trip, return_date, return_time, payment_method, status
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending')
+         notes, is_round_trip, return_date, return_time, passenger_count, duration,
+         payment_method, status
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending')
        RETURNING *`,
       [
         input.userId,
@@ -61,6 +66,8 @@ export async function createRental(input: CreateRentalInput): Promise<RentalDto>
         input.isRoundTrip,
         input.returnDate,
         input.returnTime,
+        input.passengerCount ?? null,
+        input.duration ?? null,
         input.paymentMethod,
       ],
     );

@@ -32,6 +32,7 @@ import {
 } from "./helpers";
 import type {
   AddCardRequestInput,
+  BookingLegInput,
   FundWalletRequestInput,
   PayBookingRequestInput,
   PayPackageRequestInput,
@@ -160,12 +161,25 @@ export async function fundWalletHub(data: FundWalletRequestInput) {
 // ---------- pay-booking ----------
 
 export async function payBooking(data: PayBookingRequestInput) {
-  if (!data.seat_numbers.length) {
+  // `legs` lets one payment cover bookings across multiple different rides
+  // (a return trip, or a multi-day itinerary); the original single-ride
+  // shape is normalized into a one-element legs array so the rest of this
+  // function only has to handle the general case.
+  const legs: BookingLegInput[] =
+    data.legs && data.legs.length > 0
+      ? data.legs
+      : [{ ride_id: data.ride_id!, seat_numbers: data.seat_numbers!, pickup_stop_id: data.pickup_stop_id ?? null }];
+
+  if (legs.some((leg) => !leg.seat_numbers.length)) {
     throw new ApiError(400, "At least one seat must be selected");
   }
 
   const reference = randomUUID();
-  const seatCount = data.seat_numbers.length;
+  const seatCount = legs.reduce((sum, leg) => sum + leg.seat_numbers.length, 0);
+  const rideDescription =
+    legs.length === 1
+      ? `ride #${legs[0].ride_id}`
+      : `${legs.length} rides (#${legs.map((l) => l.ride_id).join(", #")})`;
 
   // Apply coupon discount — non-blocking, matching the source's bare
   // `except Exception: pass`.
@@ -188,18 +202,20 @@ export async function payBooking(data: PayBookingRequestInput) {
   const discountPerSeat = discount / seatCount;
 
   const seatInputsFor = (paymentMethod: BookingSeatInput["paymentMethod"]): BookingSeatInput[] =>
-    data.seat_numbers.map((s) => ({
-      userId: data.user_id,
-      rideId: data.ride_id,
-      seatNumber: s,
-      amount: farePerSeat,
-      discountAmount: discountPerSeat,
-      finalAmount: farePerSeat - discountPerSeat,
-      couponCode: data.coupon_code || "",
-      groupReference: reference,
-      paymentMethod,
-      pickupStopId: data.pickup_stop_id ?? null,
-    }));
+    legs.flatMap((leg) =>
+      leg.seat_numbers.map((s) => ({
+        userId: data.user_id,
+        rideId: leg.ride_id,
+        seatNumber: s,
+        amount: farePerSeat,
+        discountAmount: discountPerSeat,
+        finalAmount: farePerSeat - discountPerSeat,
+        couponCode: data.coupon_code || "",
+        groupReference: reference,
+        paymentMethod,
+        pickupStopId: leg.pickup_stop_id ?? null,
+      })),
+    );
 
   let bookings;
 
@@ -224,7 +240,7 @@ export async function payBooking(data: PayBookingRequestInput) {
         user_id: data.user_id,
         amount: finalAmount,
         type: "trip_fare",
-        description: `Trip fare for ${seatCount} seat(s) on ride #${data.ride_id}`,
+        description: `Trip fare for ${seatCount} seat(s) on ${rideDescription}`,
         reference,
       });
     } catch (err) {
@@ -266,8 +282,10 @@ export async function payBooking(data: PayBookingRequestInput) {
       });
       throw new ApiError(409, "Seats unavailable — amount refunded to your wallet");
     }
-  } else if (data.payment_method === "debit_card") {
-    // New card — Paystack checkout; booking is created once payment verifies.
+  } else if (data.payment_method === "debit_card" || data.payment_method === "bank_transfer") {
+    // New card or bank transfer — both go through Paystack's hosted
+    // checkout (bank transfer has no "saved authorization" concept, so it
+    // always takes this path); booking is created once payment verifies.
     try {
       const result = await initializePayment({
         amount: finalAmount,
@@ -277,8 +295,8 @@ export async function payBooking(data: PayBookingRequestInput) {
         metadata: {
           purpose: "booking_payment",
           user_id: data.user_id,
-          ride_id: data.ride_id,
-          seat_numbers: data.seat_numbers,
+          payment_method: data.payment_method,
+          legs,
           fare_per_seat: farePerSeat,
           discount_per_seat: discountPerSeat,
           coupon_code: data.coupon_code || "",
@@ -521,6 +539,8 @@ export async function requestRental(data: RequestRentalRequestInput) {
       isRoundTrip: data.is_round_trip,
       returnDate: data.return_date || "",
       returnTime: data.return_time || "",
+      passengerCount: data.passenger_count ?? null,
+      duration: data.duration ?? null,
       paymentMethod: "",
     });
   } catch (err) {
@@ -701,24 +721,40 @@ export async function verifyPaymentHub(reference: string) {
         });
       } else if (purpose === "booking_payment") {
         const userId = metadata.user_id as number;
-        const rideId = metadata.ride_id as number;
-        const seatNumbers = (metadata.seat_numbers as string[]) ?? [];
+        // New metadata carries `legs` (possibly spanning multiple rides);
+        // fall back to the pre-existing single-ride shape for any payment
+        // initialized before this field existed.
+        const legs =
+          (metadata.legs as
+            | { ride_id: number; seat_numbers: string[]; pickup_stop_id?: number | null }[]
+            | undefined) ??
+          [
+            {
+              ride_id: metadata.ride_id as number,
+              seat_numbers: (metadata.seat_numbers as string[]) ?? [],
+              pickup_stop_id: null,
+            },
+          ];
+        const paymentMethod = metadata.payment_method === "bank_transfer" ? "bank_transfer" : "debit_card";
         const farePerSeat = (metadata.fare_per_seat as number) ?? 0;
         const discountPerSeat = (metadata.discount_per_seat as number) ?? 0;
         const couponCode = (metadata.coupon_code as string) ?? "";
         try {
           const bookings = await createBookingsBulk(
-            seatNumbers.map((s) => ({
-              userId,
-              rideId,
-              seatNumber: s,
-              amount: farePerSeat,
-              discountAmount: discountPerSeat,
-              finalAmount: farePerSeat - discountPerSeat,
-              couponCode,
-              groupReference: reference,
-              paymentMethod: "debit_card",
-            })),
+            legs.flatMap((leg) =>
+              leg.seat_numbers.map((s) => ({
+                userId,
+                rideId: leg.ride_id,
+                seatNumber: s,
+                amount: farePerSeat,
+                discountAmount: discountPerSeat,
+                finalAmount: farePerSeat - discountPerSeat,
+                couponCode,
+                groupReference: reference,
+                paymentMethod,
+                pickupStopId: leg.pickup_stop_id ?? null,
+              })),
+            ),
           );
           response.booking_id = bookings[0].id;
           const contact = await notificationContact(userId);

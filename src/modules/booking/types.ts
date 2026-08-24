@@ -255,6 +255,8 @@ export interface RentalRow {
   is_round_trip: boolean;
   return_date: string;
   return_time: string;
+  passenger_count: number | null;
+  duration: string | null;
   amount: number;
   payment_method: RentalPaymentMethod;
   status: RentalStatus;
@@ -275,6 +277,8 @@ export interface RentalDto {
   is_round_trip: boolean;
   return_date: string;
   return_time: string;
+  passenger_count: number | null;
+  duration: string | null;
   amount: number;
   payment_method: RentalPaymentMethod;
   status: RentalStatus;

@@ -40,6 +40,8 @@ export const requestRentalRequestSchema = z.object({
   is_round_trip: z.boolean().default(false),
   return_date: z.string().nullable().optional(),
   return_time: z.string().nullable().optional(),
+  passenger_count: z.number().int().positive().nullable().optional(),
+  duration: z.string().nullable().optional(),
 });
 export type RequestRentalRequestInput = z.infer<typeof requestRentalRequestSchema>;
 
@@ -54,20 +56,37 @@ export const payRentalRequestSchema = z.object({
 });
 export type PayRentalRequestInput = z.infer<typeof payRentalRequestSchema>;
 
-// Matches schemas.PayBookingRequest
-export const payBookingRequestSchema = z.object({
-  user_id: z.number().int(),
-  email: z.string(),
+// One ride + the seats being booked on it. `legs` lets a single payment
+// cover bookings across multiple different rides (a return trip, or a
+// multi-day itinerary) — see the `legs`-aware handling in payBooking().
+export const bookingLegSchema = z.object({
   ride_id: z.number().int(),
-  seat_numbers: z.array(z.string()),
-  amount: z.number(),
-  payment_method: paymentMethodSchema,
-  wallet_pin: z.string().nullable().optional(),
-  coupon_code: z.string().nullable().optional(),
-  authorization_code: z.string().nullable().optional(),
-  callback_url: z.string().nullable().optional(),
+  seat_numbers: z.array(z.string()).min(1),
   pickup_stop_id: z.number().int().positive().nullable().optional(),
 });
+export type BookingLegInput = z.infer<typeof bookingLegSchema>;
+
+// Matches schemas.PayBookingRequest. `ride_id`/`seat_numbers` are the
+// original single-ride shape and stay valid on their own; `legs`, when
+// present, takes precedence and lets one payment span multiple rides.
+export const payBookingRequestSchema = z
+  .object({
+    user_id: z.number().int(),
+    email: z.string(),
+    ride_id: z.number().int().optional(),
+    seat_numbers: z.array(z.string()).optional(),
+    pickup_stop_id: z.number().int().positive().nullable().optional(),
+    legs: z.array(bookingLegSchema).min(1).optional(),
+    amount: z.number(),
+    payment_method: paymentMethodSchema,
+    wallet_pin: z.string().nullable().optional(),
+    coupon_code: z.string().nullable().optional(),
+    authorization_code: z.string().nullable().optional(),
+    callback_url: z.string().nullable().optional(),
+  })
+  .refine((d) => (d.legs?.length ?? 0) > 0 || (d.ride_id != null && (d.seat_numbers?.length ?? 0) > 0), {
+    message: "Either legs[] or ride_id + seat_numbers is required",
+  });
 export type PayBookingRequestInput = z.infer<typeof payBookingRequestSchema>;
 
 // Matches schemas.PayPackageRequest
