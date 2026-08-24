@@ -349,15 +349,17 @@ export async function searchRides(
   destinationQuery: string,
   skip: number,
   limit: number,
+  fromDate?: string | null,
+  toDate?: string | null,
 ): Promise<RideDto[]> {
   await ensureBookingSchema();
   const pool = getBookingPool();
 
-  const exact = await runSearchQuery(pool, locationQuery, destinationQuery, skip, limit, "exact");
+  const exact = await runSearchQuery(pool, locationQuery, destinationQuery, skip, limit, "exact", fromDate, toDate);
   if (exact.length > 0) {
     return Promise.all(exact.map(loadRideForList));
   }
-  const partial = await runSearchQuery(pool, locationQuery, destinationQuery, skip, limit, "partial");
+  const partial = await runSearchQuery(pool, locationQuery, destinationQuery, skip, limit, "partial", fromDate, toDate);
   return Promise.all(partial.map(loadRideForList));
 }
 
@@ -368,9 +370,21 @@ async function runSearchQuery(
   skip: number,
   limit: number,
   mode: "exact" | "partial",
+  fromDate?: string | null,
+  toDate?: string | null,
 ): Promise<RideRow[]> {
   const conditions = [`rides.status = 'scheduled'`, `rides.deleted_at IS NULL`];
   const params: unknown[] = [];
+
+  if (fromDate) {
+    params.push(fromDate);
+    conditions.push(`rides.departure_time >= $${params.length}`);
+  }
+  if (toDate) {
+    // Inclusive of the whole `to_date` day — add one day and use `<`.
+    params.push(toDate);
+    conditions.push(`rides.departure_time < ($${params.length}::date + interval '1 day')`);
+  }
 
   if (destinationQuery) {
     if (mode === "exact") {
@@ -401,6 +415,7 @@ async function runSearchQuery(
      JOIN destinations ON destinations.id = routes.destination_id
      JOIN locations ON locations.id = routes.location_id
      WHERE ${conditions.join(" AND ")}
+     ORDER BY rides.departure_time ASC
      OFFSET $${params.length - 1} LIMIT $${params.length}`,
     params,
   );

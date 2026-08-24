@@ -55,6 +55,11 @@ export const chatMessageInputSchema = z.object({ message: z.string().trim().min(
 export const searchInputSchema = z.object({
   location: z.string().default(""),
   destination: requiredString,
+  // Optional departure-date window (ISO date strings, e.g. "2026-08-25"),
+  // inclusive of both ends — used by multi-day / date-range search so a
+  // single query can cover several days at once.
+  from_date: z.string().nullable().optional(),
+  to_date: z.string().nullable().optional(),
 });
 
 const paymentMethodSchema = z.enum(["wallet", "debit_card", "bank_transfer"]);

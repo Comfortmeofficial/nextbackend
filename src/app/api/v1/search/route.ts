@@ -9,8 +9,16 @@ export async function POST(request: NextRequest) {
   try {
     const body = searchInputSchema.parse(await request.json());
     const skip = Number(request.nextUrl.searchParams.get("skip") ?? "0") || 0;
-    const limit = Number(request.nextUrl.searchParams.get("limit") ?? "20") || 20;
-    const results = await searchRides(body.location, body.destination, skip, limit);
+    const defaultLimit = body.from_date || body.to_date ? 200 : 20;
+    const limit = Number(request.nextUrl.searchParams.get("limit") ?? String(defaultLimit)) || defaultLimit;
+    const results = await searchRides(
+      body.location,
+      body.destination,
+      skip,
+      limit,
+      body.from_date,
+      body.to_date,
+    );
     return NextResponse.json(results);
   } catch (error) {
     return handleRouteError(error);
