@@ -164,6 +164,30 @@ export async function unassignDriver(id: number): Promise<BusDto> {
   return toDto(rows[0]);
 }
 
+// Single source of truth for "this driver's current bus" — buses.driver_id.
+// Used by drivers/repository.ts::toDto() instead of a separately-tracked
+// (and easily stale) drivers.assigned_bus_id column.
+export async function getBusIdForDriver(driverId: number): Promise<number | null> {
+  await ensureBusesSchema();
+  const pool = getBusesPool();
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT id FROM buses WHERE driver_id = $1 AND status != 'retired' LIMIT 1`,
+    [driverId],
+  );
+  return rows[0] ? Number(rows[0].id) : null;
+}
+
+export async function getBusIdsForDrivers(driverIds: number[]): Promise<Map<number, number>> {
+  if (driverIds.length === 0) return new Map();
+  await ensureBusesSchema();
+  const pool = getBusesPool();
+  const { rows } = await pool.query<{ id: number; driver_id: number }>(
+    `SELECT id, driver_id FROM buses WHERE driver_id = ANY($1) AND status != 'retired'`,
+    [driverIds],
+  );
+  return new Map(rows.map((r) => [Number(r.driver_id), Number(r.id)]));
+}
+
 export async function getBusLayout(id: number): Promise<SeatLayout> {
   await ensureBusesSchema();
   const pool = getBusesPool();

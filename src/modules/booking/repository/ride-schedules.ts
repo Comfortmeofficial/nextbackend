@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/http-errors";
+import { assertDriverAssignable } from "@/modules/drivers/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import { fetchBusInfo, fetchDriverInfo } from "../external";
 import type { PlaceRow, RideScheduleDto, RideScheduleRow, RideScheduleStatus } from "../types";
@@ -252,6 +253,7 @@ export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSumm
 
       try {
         const driver = await fetchDriverInfo(schedule.driver_id);
+        await assertDriverAssignable(schedule.driver_id);
         const bus = await fetchBusInfo(schedule.bus_id);
         const { seatDefs, driverRow, driverCol } = seatDefsFromBusSeats(bus.seats);
         if (seatDefs.length === 0) {

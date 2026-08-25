@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/http-errors";
+import { setDriverTripStatus } from "@/modules/drivers/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import type { BusSeatDef } from "../external";
 import { loadFullRoute } from "./routes";
@@ -278,11 +279,52 @@ export async function getRideSeats(id: number): Promise<RideSeatDto[]> {
   return getSeats(id);
 }
 
+// Single source of truth for "this driver's current ride" — their most
+// imminent non-finished ride. Used by drivers/repository.ts::toDto() instead
+// of a separately-tracked (and easily stale) drivers.current_ride_id column.
+export async function getCurrentRideIdForDriver(driverId: number): Promise<number | null> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT id FROM rides
+     WHERE driver_id = $1 AND status IN ('scheduled', 'boarding', 'active') AND deleted_at IS NULL
+     ORDER BY departure_time ASC LIMIT 1`,
+    [driverId],
+  );
+  return rows[0] ? Number(rows[0].id) : null;
+}
+
+export async function getCurrentRideIdsForDrivers(driverIds: number[]): Promise<Map<number, number>> {
+  if (driverIds.length === 0) return new Map();
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const { rows } = await pool.query<{ id: number; driver_id: number }>(
+    `SELECT DISTINCT ON (driver_id) driver_id, id FROM rides
+     WHERE driver_id = ANY($1) AND status IN ('scheduled', 'boarding', 'active') AND deleted_at IS NULL
+     ORDER BY driver_id, departure_time ASC`,
+    [driverIds],
+  );
+  return new Map(rows.map((r) => [Number(r.driver_id), Number(r.id)]));
+}
+
 export async function updateRideStatus(id: number, status: RideStatus): Promise<RideDto> {
   await ensureBookingSchema();
   const pool = getBookingPool();
   await pool.query(`UPDATE rides SET status = $2, updated_at = now() WHERE id = $1`, [id, status]);
-  return (await loadFullRide(id))!;
+  const ride = (await loadFullRide(id))!;
+
+  // Keeps the assigned driver's availability in lockstep with the ride they're
+  // actually on — see setDriverTripStatus for why this lives here rather than
+  // being written independently by whichever admin/marshal action got here.
+  if (status === "boarding" || status === "active") {
+    await setDriverTripStatus(ride.driver_id, "on_trip");
+  } else if (status === "completed") {
+    await setDriverTripStatus(ride.driver_id, "completed");
+  } else if (status === "cancelled") {
+    await setDriverTripStatus(ride.driver_id, "cancelled");
+  }
+
+  return ride;
 }
 
 export async function updateRideBus(
@@ -308,11 +350,26 @@ export async function updateRideDriver(
 ): Promise<RideDto> {
   await ensureBookingSchema();
   const pool = getBookingPool();
+  const existing = await getRideRow(id);
+  const previousDriverId = existing?.driver_id ?? null;
+
   await pool.query(
     `UPDATE rides SET driver_id = $2, driver_name = $3, driver_rating = $4, updated_at = now() WHERE id = $1`,
     [id, driverId, name, rating],
   );
-  return (await loadFullRide(id))!;
+  const ride = (await loadFullRide(id))!;
+
+  // A reassignment away from a driver already boarding/active must free them
+  // up immediately too — otherwise they're stuck ON_TRIP forever, same bug
+  // this whole change is fixing, just reached from a different direction.
+  if (ride.status === "boarding" || ride.status === "active") {
+    if (previousDriverId && previousDriverId !== driverId) {
+      await setDriverTripStatus(previousDriverId, "cancelled");
+    }
+    await setDriverTripStatus(driverId, "on_trip");
+  }
+
+  return ride;
 }
 
 export async function updateRideMarshal(

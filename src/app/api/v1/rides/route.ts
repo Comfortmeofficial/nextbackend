@@ -5,6 +5,7 @@ import { fetchBusInfo, fetchDriverInfo } from "@/modules/booking/external";
 import { createRide, listRides, seatDefsFromBusSeats } from "@/modules/booking/repository/rides";
 import { createRoute } from "@/modules/booking/repository/routes";
 import { listQuerySchema, rideInputSchema } from "@/modules/booking/validation";
+import { assertDriverAssignable } from "@/modules/drivers/repository";
 
 function parseRfc3339(value: string, field: string): Date {
   // Go's time.Parse(time.RFC3339, ...) is strict about the offset/format;
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest) {
     } catch (err) {
       throw new ApiError(400, err instanceof Error ? err.message : String(err));
     }
+    await assertDriverAssignable(input.driver_id);
     let bus;
     try {
       bus = await fetchBusInfo(input.bus_id);

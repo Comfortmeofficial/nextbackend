@@ -23,7 +23,7 @@ export async function login(email: string, password: string): Promise<DriverToke
   return {
     access_token: createAccessToken(row.id),
     refresh_token: createRefreshToken(row.id),
-    driver: toDto(row),
+    driver: await toDto(row),
   };
 }
 

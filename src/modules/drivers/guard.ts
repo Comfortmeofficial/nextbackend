@@ -36,5 +36,5 @@ export async function getCurrentDriver(request: NextRequest): Promise<DriverDto>
   if (!row || !row.is_active) {
     throw new ApiError(401, "Driver not found or inactive");
   }
-  return toDto(row);
+  return await toDto(row);
 }

@@ -3,6 +3,7 @@ import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { busErrorResponse } from "@/modules/buses/errors";
 import { assignDriver, unassignDriver } from "@/modules/buses/repository";
 import { assignDriverSchema, parseBusId } from "@/modules/buses/validation";
+import { assertDriverAssignable } from "@/modules/drivers/repository";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -12,6 +13,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     requireAdminAuth(request, OPS_ROLES);
     const id = parseBusId((await params).id);
     const { driver_id } = assignDriverSchema.parse(await request.json());
+    await assertDriverAssignable(driver_id);
     const bus = await assignDriver(id, driver_id);
     return NextResponse.json(bus);
   } catch (error) {

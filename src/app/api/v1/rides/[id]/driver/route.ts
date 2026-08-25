@@ -5,6 +5,7 @@ import { fetchDriverInfo } from "@/modules/booking/external";
 import { updateRideDriver } from "@/modules/booking/repository/rides";
 import { parseBookingId } from "@/modules/booking/util";
 import { rideDriverInputSchema } from "@/modules/booking/validation";
+import { assertDriverAssignable } from "@/modules/drivers/repository";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -20,6 +21,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     } catch (err) {
       throw new ApiError(400, err instanceof Error ? err.message : String(err));
     }
+    await assertDriverAssignable(driver_id);
     const ride = await updateRideDriver(id, driver_id, driver.fullName, driver.rating);
     return NextResponse.json(ride);
   } catch (error) {
