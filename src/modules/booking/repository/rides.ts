@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/http-errors";
 import { setDriverTripStatus } from "@/modules/drivers/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import type { BusSeatDef } from "../external";
+import { completeBookingsForRide } from "./bookings";
 import { loadFullRoute } from "./routes";
 import type { RideDto, RideRow, RideSeatDto, RideSeatRow, RideStatus } from "../types";
 
@@ -320,6 +321,10 @@ export async function updateRideStatus(id: number, status: RideStatus): Promise<
     await setDriverTripStatus(ride.driver_id, "on_trip");
   } else if (status === "completed") {
     await setDriverTripStatus(ride.driver_id, "completed");
+    // Boarding a passenger is now the only checkout-adjacent step a rider
+    // takes — there's no separate per-passenger checkout, so everyone who
+    // actually boarded is marked completed in bulk once the trip ends.
+    await completeBookingsForRide(id);
   } else if (status === "cancelled") {
     await setDriverTripStatus(ride.driver_id, "cancelled");
   }

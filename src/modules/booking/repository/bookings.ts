@@ -306,11 +306,19 @@ export async function markOnBoard(id: number): Promise<BookingDto> {
   return booking;
 }
 
-export async function completeBooking(id: number): Promise<BookingDto> {
+// Called from updateRideStatus() when a ride becomes "completed" — boarding
+// is now the only checkout-adjacent action a rider takes, so there's no
+// separate per-passenger checkout step to drive this; it fires in bulk for
+// everyone who actually boarded once the marshal ends the trip. Bookings that
+// never boarded (no-shows) are left alone rather than marked completed.
+export async function completeBookingsForRide(rideId: number): Promise<void> {
   await ensureBookingSchema();
   const pool = getBookingPool();
-  await pool.query(`UPDATE bookings SET status = 'completed', updated_at = now() WHERE id = $1`, [id]);
-  return getBooking(id);
+  await pool.query(
+    `UPDATE bookings SET status = 'completed', updated_at = now()
+     WHERE ride_id = $1 AND status = 'confirmed' AND is_on_board = true`,
+    [rideId],
+  );
 }
 
 // Rider-submitted, one per booking — checked against the booking's own
