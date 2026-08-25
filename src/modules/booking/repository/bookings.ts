@@ -5,7 +5,7 @@ import { getUser } from "@/modules/users/repository";
 import { recordRating } from "@/modules/drivers/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import type { BookingDto, BookingRow, PassengerDto, PaymentMethod } from "../types";
-import { getRideRow } from "./rides";
+import { getRideRow, updateRideStatus } from "./rides";
 import { loadFullRoute } from "./routes";
 
 async function toDto(row: BookingRow): Promise<BookingDto> {
@@ -51,6 +51,7 @@ async function toDto(row: BookingRow): Promise<BookingDto> {
           marshal_name: ride.marshal_name,
           driver_row: ride.driver_row,
           driver_col: ride.driver_col,
+          schedule_id: ride.schedule_id,
           created_at: ride.created_at.toISOString(),
           updated_at: ride.updated_at.toISOString(),
         }
@@ -184,7 +185,7 @@ export async function getBooking(id: number): Promise<BookingDto> {
   return toDto(rows[0]);
 }
 
-async function getBookingRow(id: number): Promise<BookingRow | null> {
+export async function getBookingRow(id: number): Promise<BookingRow | null> {
   const pool = getBookingPool();
   const { rows } = await pool.query<BookingRow>(
     `SELECT * FROM bookings WHERE id = $1 AND deleted_at IS NULL`,
@@ -292,7 +293,17 @@ export async function markOnBoard(id: number): Promise<BookingDto> {
   await ensureBookingSchema();
   const pool = getBookingPool();
   await pool.query(`UPDATE bookings SET is_on_board = true, updated_at = now() WHERE id = $1`, [id]);
-  return getBooking(id);
+  const booking = await getBooking(id);
+  // First boarding on a ride starts it — closes the gap where a ride's own
+  // status was otherwise a fully separate, easy-to-forget ops-admin action
+  // even though the marshal is right there for the event that should drive
+  // it. Only fires from scheduled/boarding, so it can't resurrect an
+  // already-completed or cancelled ride.
+  const ride = await getRideRow(booking.ride_id);
+  if (ride && (ride.status === "scheduled" || ride.status === "boarding")) {
+    await updateRideStatus(ride.id, "active");
+  }
+  return booking;
 }
 
 export async function completeBooking(id: number): Promise<BookingDto> {
