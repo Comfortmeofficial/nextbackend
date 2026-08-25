@@ -90,6 +90,7 @@ export interface RideRow {
   marshal_name: string | null;
   driver_row: number | null;
   driver_col: number | null;
+  schedule_id: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -142,6 +143,53 @@ export interface RideDto {
   marshal_name: string | null;
   driver_row: number | null;
   driver_col: number | null;
+  schedule_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type RideScheduleStatus = "active" | "paused";
+
+export interface RideScheduleRow {
+  id: number;
+  bus_id: number;
+  driver_id: number;
+  route_name: string;
+  location_id: number;
+  destination_id: number;
+  distance_km: number;
+  stops: { stop_id: number; fare: number | null }[];
+  fare: number;
+  departure_time_of_day: string;
+  duration_minutes: number | null;
+  days_of_week: number[];
+  start_date: string;
+  end_date: string | null;
+  status: RideScheduleStatus;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface RideScheduleDto {
+  id: number;
+  bus_id: number;
+  driver_id: number;
+  route_name: string;
+  location_id: number;
+  destination_id: number;
+  distance_km: number;
+  stops: { stop_id: number; fare: number | null }[];
+  fare: number;
+  departure_time_of_day: string;
+  duration_minutes: number | null;
+  days_of_week: number[];
+  start_date: string;
+  end_date: string | null;
+  status: RideScheduleStatus;
+  bus_plate?: string;
+  driver_name?: string;
+  location?: PlaceDto;
+  destination?: PlaceDto;
   created_at: string;
   updated_at: string;
 }

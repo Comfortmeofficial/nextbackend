@@ -3,6 +3,7 @@ import { ApiError, handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { fetchBusInfo, fetchDriverInfo } from "@/modules/booking/external";
 import { createRide, listRides, seatDefsFromBusSeats } from "@/modules/booking/repository/rides";
+import { createRoute } from "@/modules/booking/repository/routes";
 import { listQuerySchema, rideInputSchema } from "@/modules/booking/validation";
 
 function parseRfc3339(value: string, field: string): Date {
@@ -43,10 +44,14 @@ export async function POST(request: NextRequest) {
     }
 
     const { seatDefs, driverRow, driverCol } = seatDefsFromBusSeats(bus.seats);
-    const totalSeats = seatDefs.length > 0 ? seatDefs.length : input.total_seats;
+    if (seatDefs.length === 0) {
+      throw new ApiError(400, `bus ${input.bus_id} has no seats configured — set its layout before scheduling rides`);
+    }
+
+    const route = await createRoute(input.route);
 
     const ride = await createRide({
-      routeId: input.route_id,
+      routeId: route.id,
       busId: input.bus_id,
       driverId: input.driver_id,
       driverName: driver.fullName,
@@ -56,10 +61,11 @@ export async function POST(request: NextRequest) {
       departureTime,
       arrivalTime,
       fare: input.fare,
-      totalSeats,
+      totalSeats: seatDefs.length,
       seatDefs,
       driverRow,
       driverCol,
+      scheduleId: null,
     });
     return NextResponse.json(ride, { status: 201 });
   } catch (error) {

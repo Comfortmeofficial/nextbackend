@@ -85,6 +85,29 @@ export function ensureBookingSchema(): Promise<void> {
       ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS fare DOUBLE PRECISION;
       CREATE INDEX IF NOT EXISTS idx_route_stops_route_id ON route_stops (route_id);
 
+      CREATE TABLE IF NOT EXISTS ride_schedules (
+        id SERIAL PRIMARY KEY,
+        bus_id INTEGER NOT NULL,
+        driver_id INTEGER NOT NULL,
+        route_name VARCHAR(255) NOT NULL,
+        location_id INTEGER NOT NULL,
+        destination_id INTEGER NOT NULL,
+        distance_km DOUBLE PRECISION NOT NULL DEFAULT 0,
+        stops JSONB NOT NULL DEFAULT '[]',
+        fare DOUBLE PRECISION NOT NULL,
+        departure_time_of_day VARCHAR(5) NOT NULL,
+        duration_minutes INTEGER,
+        days_of_week JSONB NOT NULL DEFAULT '[]',
+        start_date DATE NOT NULL,
+        end_date DATE,
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        deleted_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_ride_schedules_status ON ride_schedules (status);
+      CREATE INDEX IF NOT EXISTS idx_ride_schedules_deleted_at ON ride_schedules (deleted_at);
+
       CREATE TABLE IF NOT EXISTS rides (
         id SERIAL PRIMARY KEY,
         route_id INTEGER NOT NULL,
@@ -109,6 +132,11 @@ export function ensureBookingSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_rides_deleted_at ON rides (deleted_at);
       ALTER TABLE rides ADD COLUMN IF NOT EXISTS marshal_admin_id INTEGER;
       ALTER TABLE rides ADD COLUMN IF NOT EXISTS marshal_name VARCHAR(255);
+      -- Which schedule generated this ride, if any — read-only provenance
+      -- only (editing/pausing a schedule never touches already-generated
+      -- rows), so this is never joined against for live behavior.
+      ALTER TABLE rides ADD COLUMN IF NOT EXISTS schedule_id INTEGER;
+      CREATE INDEX IF NOT EXISTS idx_rides_schedule_id ON rides (schedule_id);
       -- The driver's grid position from the bus layout admins configure —
       -- captured at ride-creation time since seat_type='driver' cells are
       -- deliberately excluded from ride_seats (not a bookable seat) and

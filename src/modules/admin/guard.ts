@@ -51,6 +51,18 @@ export function requireAdminAuth(
   return claims;
 }
 
+// Accepts either a Vercel Cron request (a shared-secret bearer token, if
+// CRON_SECRET is configured) or a normal admin token with an allowed role —
+// lets the ride-generation endpoint be triggered by an actual cron job AND
+// opportunistically from the Schedules admin page, without either path
+// needing its own separate endpoint.
+export function requireCronOrAdminAuth(request: NextRequest, allowedRoles?: AdminRoleApi[]): void {
+  const header = request.headers.get("authorization") ?? "";
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && header === `Bearer ${cronSecret}`) return;
+  requireAdminAuth(request, allowedRoles);
+}
+
 // Reasonable first-pass role tiers — sketched, not yet confirmed against
 // real org policy. super_admin and admin both get full operational access;
 // the only thing admin can't do is manage other admin accounts, matching
