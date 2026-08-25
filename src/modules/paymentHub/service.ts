@@ -21,6 +21,7 @@ import {
   getBooking,
 } from "@/modules/booking/repository/bookings";
 import type { BookingSeatInput } from "@/modules/booking/repository/bookings";
+import type { BookingDto } from "@/modules/booking/types";
 import { createPackage } from "@/modules/booking/repository/packages";
 import { createRental, getRental, updateRentalStatus } from "@/modules/booking/repository/rentals";
 import {
@@ -42,6 +43,40 @@ import type {
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+// Groups freshly-created bookings by ride into the confirmation email's
+// per-leg breakdown — more than one entry only when the purchase spans
+// multiple rides (a return trip or a multi-day booking).
+function summarizeBookingLegs(bookings: BookingDto[]) {
+  const byRide = new Map<
+    number,
+    {
+      location_name: string;
+      destination_name: string;
+      departure_time: string;
+      seat_numbers: string[];
+      bus_plate: string | null;
+      fare: number;
+    }
+  >();
+  for (const b of bookings) {
+    const existing = byRide.get(b.ride_id);
+    if (existing) {
+      existing.seat_numbers.push(b.seat_number);
+      existing.fare += b.final_amount;
+    } else {
+      byRide.set(b.ride_id, {
+        location_name: b.ride.route.location.name,
+        destination_name: b.ride.route.destination.name,
+        departure_time: b.ride.departure_time,
+        bus_plate: b.ride.bus_plate,
+        seat_numbers: [b.seat_number],
+        fare: b.final_amount,
+      });
+    }
+  }
+  return Array.from(byRide.values());
 }
 
 // Verifies a wallet PIN the same loose way the source does: it only ever
@@ -320,6 +355,7 @@ export async function payBooking(data: PayBookingRequestInput) {
     user_id: data.user_id,
     amount: finalAmount,
     reference,
+    legs: summarizeBookingLegs(bookings),
     phone: contact.phone,
     email: contact.email,
     push_token: contact.push_token,
@@ -762,6 +798,7 @@ export async function verifyPaymentHub(reference: string) {
             user_id: userId,
             amount: result.amount,
             reference,
+            legs: summarizeBookingLegs(bookings),
             phone: contact.phone,
             email: contact.email,
             push_token: contact.push_token,

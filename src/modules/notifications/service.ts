@@ -1,4 +1,4 @@
-import { formatNaira } from "./format";
+import { formatNaira, formatRideDateTime } from "./format";
 import { sendEmail } from "./providers/resend";
 import { sendPush } from "./providers/expo";
 import { sendSms } from "./providers/twilio";
@@ -61,12 +61,25 @@ export async function sendBookingNotification(data: z.infer<typeof bookingNotifi
   const title = "Booking Confirmed! \u{1F389}";
   const body = `Ref: ${data.reference} · NGN ${formatNaira(data.amount)}. Have a comfortable ride!`;
   const smsBody = `Booking Confirmed! Reference: ${data.reference}. Amount: NGN ${formatNaira(data.amount)}. Have a comfortable ride!`;
+  const legsHtml = data.legs
+    .map(
+      (leg) => `
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:12px 0;">
+      <p style="color:#1A1A1A;font-size:15px;font-weight:bold;margin:0 0 6px;">${leg.location_name} \u{2192} ${leg.destination_name}</p>
+      <p style="color:#6b7280;font-size:14px;margin:2px 0;">Departure: ${formatRideDateTime(leg.departure_time)}</p>
+      <p style="color:#6b7280;font-size:14px;margin:2px 0;">Seat${leg.seat_numbers.length > 1 ? "s" : ""}: ${leg.seat_numbers.join(", ")}</p>
+      ${leg.bus_plate ? `<p style="color:#6b7280;font-size:14px;margin:2px 0;">Bus: ${leg.bus_plate}</p>` : ""}
+      <p style="color:#6b7280;font-size:14px;margin:2px 0;">Fare: NGN ${formatNaira(leg.fare)}</p>
+    </div>`,
+    )
+    .join("");
   const emailHtml = `
   <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
     ${EMAIL_LOGO_HTML}
     <h1 style="color:#0058BC;font-size:22px;margin-bottom:8px;">Booking Confirmed! \u{1F389}</h1>
     <p style="color:#6b7280;font-size:16px;">Reference: <strong>${data.reference}</strong></p>
-    <p style="color:#6b7280;font-size:16px;">Amount: NGN ${formatNaira(data.amount)}</p>
+    ${legsHtml}
+    <p style="color:#1A1A1A;font-size:16px;font-weight:bold;">Total Paid: NGN ${formatNaira(data.amount)}</p>
     <p style="color:#9ca3af;font-size:13px;">Have a comfortable ride!</p>
   </div>
   `;

@@ -17,11 +17,25 @@ export const otpNotificationSchema = z.object({
   push_token: z.string().nullable().optional(),
 });
 
+// One entry per ride in the booking (more than one for a return trip/
+// multi-day purchase) — everything the confirmation email needs to actually
+// describe the trip, since a bare reference + amount previously left riders
+// with a booking confirmation that said nothing about the ride itself.
+const bookingLegSchema = z.object({
+  location_name: z.string(),
+  destination_name: z.string(),
+  departure_time: z.string(),
+  seat_numbers: z.array(z.string()),
+  bus_plate: z.string().nullable().optional(),
+  fare: z.number(),
+});
+
 export const bookingNotificationSchema = z.object({
   user_id: z.number().int(),
   booking_id: z.number().int().nullable().optional(),
   amount: z.number(),
   reference: z.string(),
+  legs: z.array(bookingLegSchema).default([]),
   ...contactFields,
 });
 
