@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import {
   deleteRideSchedule,
   getRideSchedule,
@@ -27,11 +28,12 @@ export async function GET(_request: NextRequest, { params }: Params) {
 // never touches rides already generated from it.
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const input = rideScheduleInputSchema.parse(await request.json());
     const schedule = await updateRideSchedule(id, input);
+    recordAuditLog(actor, request, "UPDATE", "ride_schedule", id, input);
     return NextResponse.json(schedule);
   } catch (error) {
     return handleRouteError(error);
@@ -41,10 +43,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 // DELETE /api/v1/ride-schedules/{id} — stops future generation only.
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     await deleteRideSchedule(id);
+    recordAuditLog(actor, request, "DELETE", "ride_schedule", id);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return handleRouteError(error);

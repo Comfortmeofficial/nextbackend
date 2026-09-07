@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { fetchBusInfo } from "@/modules/booking/external";
 import { updateRideBus } from "@/modules/booking/repository/rides";
 import { parseBookingId } from "@/modules/booking/util";
@@ -10,7 +11,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const { bus_id } = rideBusInputSchema.parse(await request.json());
@@ -21,6 +22,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       throw new ApiError(400, err instanceof Error ? err.message : String(err));
     }
     const ride = await updateRideBus(id, bus_id, bus.plateNumber, bus.model);
+    recordAuditLog(actor, request, "UPDATE", "ride", id, { bus_id });
     return NextResponse.json(ride);
   } catch (error) {
     return handleRouteError(error);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleRouteError } from "@/lib/http-errors";
+import { ApiError, handleRouteError } from "@/lib/http-errors";
+import { requireCustomerAuth } from "@/modules/auth/guard";
 import { setDefaultCard } from "@/modules/cards/repository";
 import { idParamSchema, userIdQuerySchema } from "@/modules/cards/validation";
 
@@ -12,6 +13,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const { user_id } = userIdQuerySchema.parse(
       Object.fromEntries(request.nextUrl.searchParams),
     );
+    if (requireCustomerAuth(request) !== user_id) {
+      throw new ApiError(403, "Not your card");
+    }
     const card = await setDefaultCard(cardId, user_id);
     return NextResponse.json(card);
   } catch (error) {

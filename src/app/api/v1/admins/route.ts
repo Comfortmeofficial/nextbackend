@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
 import { FULL_ACCESS, requireAdminAuth, requireRequestId, SUPER_ADMIN_ONLY } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { createAdmin, listAdmins } from "@/modules/admin/repository";
 import { adminCreateSchema, listQuerySchema } from "@/modules/admin/validation";
 
@@ -11,9 +12,10 @@ export async function POST(request: NextRequest) {
   const headerError = requireRequestId(request);
   if (headerError) return headerError;
   try {
-    requireAdminAuth(request, SUPER_ADMIN_ONLY);
+    const actor = requireAdminAuth(request, SUPER_ADMIN_ONLY);
     const body = adminCreateSchema.parse(await request.json());
     const admin = await createAdmin(body);
+    recordAuditLog(actor, request, "CREATE", "admin", admin.id, { email: admin.email, role: admin.role });
     return NextResponse.json(admin, { status: 201 });
   } catch (error) {
     return handleRouteError(error);

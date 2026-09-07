@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { fetchBusInfo, fetchDriverInfo } from "@/modules/booking/external";
 import { createRide, listRides, seatDefsFromBusSeats } from "@/modules/booking/repository/rides";
 import { createRoute } from "@/modules/booking/repository/routes";
@@ -26,7 +27,7 @@ function parseRfc3339(value: string, field: string): Date {
 // POST /api/v1/rides
 export async function POST(request: NextRequest) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const input = rideInputSchema.parse(await request.json());
     const departureTime = parseRfc3339(input.departure_time, "departure_time");
     const arrivalTime = input.arrival_time ? parseRfc3339(input.arrival_time, "arrival_time") : null;
@@ -68,6 +69,11 @@ export async function POST(request: NextRequest) {
       driverRow,
       driverCol,
       scheduleId: null,
+    });
+    recordAuditLog(actor, request, "CREATE", "ride", ride.id, {
+      route_id: route.id,
+      bus_id: input.bus_id,
+      driver_id: input.driver_id,
     });
     return NextResponse.json(ride, { status: 201 });
   } catch (error) {

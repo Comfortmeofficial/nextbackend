@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
 import { FINANCE_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { createReferralCode, listReferralCodes } from "@/modules/rewards/repository";
 import { listQuerySchema, referralCodeCreateSchema } from "@/modules/rewards/validation";
 
 // POST /api/v1/referrals/
 export async function POST(request: NextRequest) {
   try {
-    requireAdminAuth(request, FINANCE_ROLES);
+    const actor = requireAdminAuth(request, FINANCE_ROLES);
     const body = referralCodeCreateSchema.parse(await request.json());
     const referral = await createReferralCode(body);
+    recordAuditLog(actor, request, "CREATE", "referral_code", referral.id, { code: referral.code });
     return NextResponse.json(referral, { status: 201 });
   } catch (error) {
     return handleRouteError(error);

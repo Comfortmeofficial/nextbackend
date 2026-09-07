@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleRouteError } from "@/lib/http-errors";
+import { ApiError, handleRouteError } from "@/lib/http-errors";
+import { requireCustomerAuth } from "@/modules/auth/guard";
 import { createBookingsBulk } from "@/modules/booking/repository/bookings";
 import { bulkBookingInputSchema } from "@/modules/booking/validation";
 
@@ -8,6 +9,9 @@ import { bulkBookingInputSchema } from "@/modules/booking/validation";
 export async function POST(request: NextRequest) {
   try {
     const input = bulkBookingInputSchema.parse(await request.json());
+    if (requireCustomerAuth(request) !== input.user_id) {
+      throw new ApiError(403, "Not your account");
+    }
     const bookings = input.seats.map((s) => {
       const final = Math.max(0, s.amount - s.discount_amount);
       return {

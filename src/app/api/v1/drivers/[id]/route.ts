@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { deleteDriver, getDriver, updateDriver } from "@/modules/drivers/repository";
 import { driverUpdateSchema } from "@/modules/drivers/validation";
 import { idParamSchema } from "@/lib/common-validation";
@@ -24,10 +25,11 @@ export async function GET(request: NextRequest, { params }: Params) {
 // fields), so this single check covers all of those.
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const id = idParamSchema.parse((await params).id);
     const body = driverUpdateSchema.parse(await request.json());
     const driver = await updateDriver(id, body);
+    recordAuditLog(actor, request, "UPDATE", "driver", id, body);
     return NextResponse.json(driver);
   } catch (error) {
     return handleRouteError(error);
@@ -37,9 +39,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
 // DELETE /api/v1/drivers/{driver_id}
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const id = idParamSchema.parse((await params).id);
     await deleteDriver(id);
+    recordAuditLog(actor, request, "DELETE", "driver", id);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return handleRouteError(error);

@@ -46,9 +46,15 @@ export async function listNotifications(
   return rows.map(toDto);
 }
 
-export async function markRead(notificationId: number): Promise<void> {
+// Scoped by owner (not just id) so marking someone else's notification read
+// silently matches zero rows instead of requiring a separate ownership
+// lookup — matches the route's existing "always 200" behavior either way.
+export async function markRead(notificationId: number, userId: number): Promise<void> {
   const pool = getNotificationsPool();
   if (!pool) return;
   await ensureNotificationsSchema();
-  await pool.query(`UPDATE notifications SET is_read = true WHERE id = $1`, [notificationId]);
+  await pool.query(`UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2`, [
+    notificationId,
+    userId,
+  ]);
 }

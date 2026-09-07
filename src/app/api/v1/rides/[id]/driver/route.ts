@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { fetchDriverInfo } from "@/modules/booking/external";
 import { updateRideDriver } from "@/modules/booking/repository/rides";
 import { parseBookingId } from "@/modules/booking/util";
@@ -11,7 +12,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const { driver_id } = rideDriverInputSchema.parse(await request.json());
@@ -23,6 +24,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
     await assertDriverAssignable(driver_id);
     const ride = await updateRideDriver(id, driver_id, driver.fullName, driver.rating);
+    recordAuditLog(actor, request, "UPDATE", "ride", id, { driver_id });
     return NextResponse.json(ride);
   } catch (error) {
     return handleRouteError(error);

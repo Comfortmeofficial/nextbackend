@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { createDriver, listDrivers } from "@/modules/drivers/repository";
 import { driverCreateSchema } from "@/modules/drivers/validation";
 import { listQuerySchema } from "@/lib/common-validation";
@@ -8,9 +9,10 @@ import { listQuerySchema } from "@/lib/common-validation";
 // POST /api/v1/drivers/
 export async function POST(request: NextRequest) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const body = driverCreateSchema.parse(await request.json());
     const driver = await createDriver(body);
+    recordAuditLog(actor, request, "CREATE", "driver", driver.id, { email: driver.email });
     return NextResponse.json(driver, { status: 201 });
   } catch (error) {
     return handleRouteError(error);

@@ -26,12 +26,12 @@ function layoutCapacity(layout: SeatLayout): number {
 
 function toDto(row: BusRow): BusDto {
   return {
-    id: Number(row.id),
+    id: row.id,
     plate_number: row.plate_number,
     capacity: row.capacity,
     model: row.model,
     status: row.status as BusDto["status"],
-    driver_id: row.driver_id === null ? null : Number(row.driver_id),
+    driver_id: row.driver_id,
     layout: row.layout,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
@@ -112,7 +112,7 @@ export async function updateBus(id: number, input: UpdateBusInput): Promise<BusD
   const newPlate = input.plate_number ?? existing.plate_number;
   const newModel = input.model ?? existing.model;
   const newStatus = input.status ?? existing.status;
-  const newDriverId = input.driver_id ?? (existing.driver_id === null ? null : Number(existing.driver_id));
+  const newDriverId = input.driver_id ?? existing.driver_id;
   const newLayout = input.layout ?? existing.layout;
   const newCapacity = layoutCapacity(newLayout);
 
@@ -174,7 +174,7 @@ export async function getBusIdForDriver(driverId: number): Promise<number | null
     `SELECT id FROM buses WHERE driver_id = $1 AND status != 'retired' LIMIT 1`,
     [driverId],
   );
-  return rows[0] ? Number(rows[0].id) : null;
+  return rows[0] ? rows[0].id : null;
 }
 
 export async function getBusIdsForDrivers(driverIds: number[]): Promise<Map<number, number>> {
@@ -185,7 +185,7 @@ export async function getBusIdsForDrivers(driverIds: number[]): Promise<Map<numb
     `SELECT id, driver_id FROM buses WHERE driver_id = ANY($1) AND status != 'retired'`,
     [driverIds],
   );
-  return new Map(rows.map((r) => [Number(r.driver_id), Number(r.id)]));
+  return new Map(rows.map((r) => [r.driver_id, r.id]));
 }
 
 export async function getBusLayout(id: number): Promise<SeatLayout> {

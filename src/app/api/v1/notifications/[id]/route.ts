@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleRouteError } from "@/lib/http-errors";
+import { ApiError, handleRouteError } from "@/lib/http-errors";
+import { requireCustomerAuth } from "@/modules/auth/guard";
 import { listNotifications } from "@/modules/notifications/repository";
 import { idParamSchema, listQuerySchema } from "@/modules/notifications/validation";
 
@@ -10,6 +11,9 @@ type Params = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, { params }: Params) {
   try {
     const userId = idParamSchema.parse((await params).id);
+    if (requireCustomerAuth(request) !== userId) {
+      throw new ApiError(403, "Not your notifications");
+    }
     const { skip, limit } = listQuerySchema.parse(Object.fromEntries(request.nextUrl.searchParams));
     const notifications = await listNotifications(userId, skip, limit);
     return NextResponse.json(notifications);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { updateRideStatus } from "@/modules/booking/repository/rides";
 import { parseBookingId } from "@/modules/booking/util";
 import { rideStatusInputSchema } from "@/modules/booking/validation";
@@ -13,7 +14,7 @@ type Params = { params: Promise<{ id: string }> };
 // it's genuinely admin-shaped, not driver-side).
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const { status } = rideStatusInputSchema.parse(await request.json());
@@ -21,6 +22,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       throw new ApiError(400, `invalid ride status: ${status}`);
     }
     const ride = await updateRideStatus(id, status as (typeof VALID_RIDE_STATUSES)[number]);
+    recordAuditLog(actor, request, "UPDATE", "ride", id, { status });
     return NextResponse.json(ride);
   } catch (error) {
     return handleRouteError(error);

@@ -280,6 +280,37 @@ export async function completeSignupVerification(email: string) {
   return issueTokens(user_id, email, role);
 }
 
+// ---------- Sync email from the users module ----------
+
+// Called synchronously (not fire-and-forget like completeSignupVerification's
+// auth->users sync) from PUT /users/{id} whenever the request changes email.
+// auth_users.email is what login actually checks, so unlike the
+// is_verified sync — where a failure just means a secondary admin-dashboard
+// badge is briefly stale — a failure here left uncaught would silently break
+// the user's own ability to log in, which is the exact bug this exists to
+// close. Surfacing it as a real error (email already in use elsewhere, or no
+// auth_users row for this user at all) means the users.email change gets
+// rejected rather than the two tables drifting apart.
+export async function syncEmailForUser(userId: number, newEmail: string): Promise<void> {
+  await ensureAuthSchema();
+  const email = normalizeEmail(newEmail);
+
+  const existing = await query("SELECT user_id FROM auth_users WHERE user_id = $1", [userId]);
+  if (existing.rowCount === 0) {
+    throw new ApiError(404, "No login credentials found for this user");
+  }
+
+  const collision = await query("SELECT user_id FROM auth_users WHERE email = $1 AND user_id <> $2", [
+    email,
+    userId,
+  ]);
+  if ((collision.rowCount ?? 0) > 0) {
+    throw new ApiError(409, "Email is already in use");
+  }
+
+  await query("UPDATE auth_users SET email = $1, updated_at = NOW() WHERE user_id = $2", [email, userId]);
+}
+
 // ---------- Logout ----------
 
 export async function logout(token: string) {

@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { locationRepo } from "@/modules/booking/repository/places";
 import { listQuerySchema, placeInputSchema } from "@/modules/booking/validation";
 
 // POST /api/v1/locations
 export async function POST(request: NextRequest) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const body = placeInputSchema.parse(await request.json());
     const loc = await locationRepo.create(body);
+    recordAuditLog(actor, request, "CREATE", "location", loc.id, { name: body.name });
     return NextResponse.json(loc, { status: 201 });
   } catch (error) {
     return handleRouteError(error);

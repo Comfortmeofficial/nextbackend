@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { busErrorResponse } from "@/modules/buses/errors";
 import { createBus, listBuses } from "@/modules/buses/repository";
 import { createBusSchema } from "@/modules/buses/validation";
@@ -7,9 +8,10 @@ import { createBusSchema } from "@/modules/buses/validation";
 // POST /api/v1/buses
 export async function POST(request: NextRequest) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const body = createBusSchema.parse(await request.json());
     const bus = await createBus(body);
+    recordAuditLog(actor, request, "CREATE", "bus", bus.id, { plate_number: body.plate_number });
     return NextResponse.json(bus, { status: 201 });
   } catch (error) {
     return busErrorResponse(error);

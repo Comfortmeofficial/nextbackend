@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
 import { OPS_OR_MARSHAL_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { getRideRow, updateRideStatus } from "@/modules/booking/repository/rides";
 import { parseBookingId } from "@/modules/booking/util";
 
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const updated = await updateRideStatus(id, "completed");
+    recordAuditLog(claims, request, "UPDATE", "ride", id, { status: "completed", via: "end-trip" });
     return NextResponse.json(updated);
   } catch (error) {
     return handleRouteError(error);

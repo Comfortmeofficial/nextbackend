@@ -1,8 +1,9 @@
+import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { ApiError } from "@/lib/http-errors";
 import { ensureAdminSchema, getAdminPool } from "./db";
 import { ACCESS_TOKEN_TTL_SECONDS, createAccessToken } from "./jwt";
-import { findActiveByEmail, toDto } from "./repository";
+import { findActiveByEmail, findActiveById, toDto } from "./repository";
 import type { AdminRow } from "./types";
 
 export interface AdminLoginResponse {
@@ -58,6 +59,24 @@ export async function login(email: string, password: string): Promise<AdminLogin
       updated_at: admin.updated_at.toISOString(),
     },
   };
+}
+
+// Mirrors drivers/auth-service.ts's resetPassword — same temporary-password
+// pattern, same "the caller (a route requiring an admin token) is what
+// actually keeps this safe" shape.
+export async function resetPassword(adminId: number): Promise<string> {
+  const row = await findActiveById(adminId);
+  if (!row) {
+    throw new ApiError(404, "Admin not found");
+  }
+  const tempPassword = randomBytes(9).toString("base64url");
+  const passwordHash = await bcrypt.hash(tempPassword, 12);
+  const pool = getAdminPool();
+  await pool.query(`UPDATE admins SET password_hash = $1, updated_at = now() WHERE id = $2`, [
+    passwordHash,
+    adminId,
+  ]);
+  return tempPassword;
 }
 
 // One-time bootstrap: seeds the super admin from SUPER_ADMIN_* env vars.

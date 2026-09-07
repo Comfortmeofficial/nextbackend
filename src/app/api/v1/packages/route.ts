@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
+import { requireCustomerAuth } from "@/modules/auth/guard";
 import { createPackage, listPackagesBySender } from "@/modules/booking/repository/packages";
 import { packageInputSchema } from "@/modules/booking/validation";
 
@@ -31,6 +32,9 @@ export async function GET(request: NextRequest) {
     const senderId = Number(request.nextUrl.searchParams.get("sender_user_id") ?? "0") || 0;
     if (!senderId) {
       throw new ApiError(400, "sender_user_id is required");
+    }
+    if (requireCustomerAuth(request) !== senderId) {
+      throw new ApiError(403, "Not your packages");
     }
     const items = await listPackagesBySender(senderId);
     return NextResponse.json(items);

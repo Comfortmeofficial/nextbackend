@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
+import { FINANCE_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { notifyRentalEvent } from "@/modules/booking/external";
 import { getRentalRow, updateRentalPrice } from "@/modules/booking/repository/rentals";
 import { parseBookingId } from "@/modules/booking/util";
@@ -9,9 +10,11 @@ type Params = { params: Promise<{ id: string }> };
 
 // PATCH /api/v1/rentals/{id}/price — how an admin approves a pending rental
 // request with a quoted price; the only way a rental reaches
-// "awaiting_payment". Only valid from "pending".
+// "awaiting_payment". Only valid from "pending". Admin-only — no customer
+// should ever set their own rental's price.
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
+    requireAdminAuth(request, FINANCE_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const { amount } = rentalPriceInputSchema.parse(await request.json());

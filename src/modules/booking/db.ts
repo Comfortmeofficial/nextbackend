@@ -74,6 +74,8 @@ export function ensureBookingSchema(): Promise<void> {
         deleted_at TIMESTAMPTZ
       );
       CREATE INDEX IF NOT EXISTS idx_routes_deleted_at ON routes (deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_routes_location_id ON routes (location_id);
+      CREATE INDEX IF NOT EXISTS idx_routes_destination_id ON routes (destination_id);
 
       CREATE TABLE IF NOT EXISTS route_stops (
         id SERIAL PRIMARY KEY,
@@ -84,6 +86,7 @@ export function ensureBookingSchema(): Promise<void> {
       );
       ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS fare DOUBLE PRECISION;
       CREATE INDEX IF NOT EXISTS idx_route_stops_route_id ON route_stops (route_id);
+      CREATE INDEX IF NOT EXISTS idx_route_stops_stop_id ON route_stops (stop_id);
 
       CREATE TABLE IF NOT EXISTS ride_schedules (
         id SERIAL PRIMARY KEY,
@@ -144,6 +147,8 @@ export function ensureBookingSchema(): Promise<void> {
       ALTER TABLE rides ADD COLUMN IF NOT EXISTS driver_row INTEGER;
       ALTER TABLE rides ADD COLUMN IF NOT EXISTS driver_col INTEGER;
       CREATE INDEX IF NOT EXISTS idx_rides_marshal_admin_id ON rides (marshal_admin_id);
+      CREATE INDEX IF NOT EXISTS idx_rides_driver_id ON rides (driver_id);
+      CREATE INDEX IF NOT EXISTS idx_rides_bus_id ON rides (bus_id);
 
       CREATE TABLE IF NOT EXISTS ride_seats (
         id SERIAL PRIMARY KEY,
@@ -156,6 +161,7 @@ export function ensureBookingSchema(): Promise<void> {
         booking_id INTEGER
       );
       CREATE INDEX IF NOT EXISTS idx_ride_seats_ride_id ON ride_seats (ride_id);
+      CREATE INDEX IF NOT EXISTS idx_ride_seats_booking_id ON ride_seats (booking_id);
 
       CREATE TABLE IF NOT EXISTS bookings (
         id SERIAL PRIMARY KEY,
@@ -185,6 +191,7 @@ export function ensureBookingSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_bookings_ride_id ON bookings (ride_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_group_reference ON bookings (group_reference);
       CREATE INDEX IF NOT EXISTS idx_bookings_deleted_at ON bookings (deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_bookings_pickup_stop_id ON bookings (pickup_stop_id);
 
       CREATE TABLE IF NOT EXISTS rentals (
         id SERIAL PRIMARY KEY,
@@ -242,6 +249,55 @@ export function ensureBookingSchema(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_trip_chat_thread ON trip_chat_messages (ride_id, user_id, created_at);
+
+      -- Foreign keys for the relations that live inside this one database
+      -- (booking-DB-only; nothing here can constrain across the buses/
+      -- drivers/users physical databases). Confirmed zero orphaned rows
+      -- against the live data before adding these. Postgres has no
+      -- ADD CONSTRAINT IF NOT EXISTS, so each is guarded by a pg_constraint
+      -- lookup — this whole block re-runs on every cold start via
+      -- ensureBookingSchema(), and re-adding an existing constraint would
+      -- otherwise error every time after the first. NOT VALID + a separate
+      -- VALIDATE CONSTRAINT avoids holding a long table lock to scan
+      -- existing rows up front (VALIDATE is itself idempotent to re-run).
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_rides_route_id') THEN
+          ALTER TABLE rides ADD CONSTRAINT fk_rides_route_id
+            FOREIGN KEY (route_id) REFERENCES routes (id) NOT VALID;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_bookings_ride_id') THEN
+          ALTER TABLE bookings ADD CONSTRAINT fk_bookings_ride_id
+            FOREIGN KEY (ride_id) REFERENCES rides (id) NOT VALID;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_bookings_pickup_stop_id') THEN
+          ALTER TABLE bookings ADD CONSTRAINT fk_bookings_pickup_stop_id
+            FOREIGN KEY (pickup_stop_id) REFERENCES stops (id) NOT VALID;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_route_stops_route_id') THEN
+          ALTER TABLE route_stops ADD CONSTRAINT fk_route_stops_route_id
+            FOREIGN KEY (route_id) REFERENCES routes (id) NOT VALID;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_route_stops_stop_id') THEN
+          ALTER TABLE route_stops ADD CONSTRAINT fk_route_stops_stop_id
+            FOREIGN KEY (stop_id) REFERENCES stops (id) NOT VALID;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_packages_ride_id') THEN
+          ALTER TABLE packages ADD CONSTRAINT fk_packages_ride_id
+            FOREIGN KEY (ride_id) REFERENCES rides (id) NOT VALID;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_ride_seats_ride_id') THEN
+          ALTER TABLE ride_seats ADD CONSTRAINT fk_ride_seats_ride_id
+            FOREIGN KEY (ride_id) REFERENCES rides (id) NOT VALID;
+        END IF;
+      END $$;
+      ALTER TABLE rides VALIDATE CONSTRAINT fk_rides_route_id;
+      ALTER TABLE bookings VALIDATE CONSTRAINT fk_bookings_ride_id;
+      ALTER TABLE bookings VALIDATE CONSTRAINT fk_bookings_pickup_stop_id;
+      ALTER TABLE route_stops VALIDATE CONSTRAINT fk_route_stops_route_id;
+      ALTER TABLE route_stops VALIDATE CONSTRAINT fk_route_stops_stop_id;
+      ALTER TABLE packages VALIDATE CONSTRAINT fk_packages_ride_id;
+      ALTER TABLE ride_seats VALIDATE CONSTRAINT fk_ride_seats_ride_id;
     `)
       .then(() => undefined)
       .catch((err) => {

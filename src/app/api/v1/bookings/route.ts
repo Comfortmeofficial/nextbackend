@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
+import { requireCustomerAuth } from "@/modules/auth/guard";
 import { createBooking, listBookingsByUser } from "@/modules/booking/repository/bookings";
 import { bookingInputSchema } from "@/modules/booking/validation";
 
@@ -7,6 +8,9 @@ import { bookingInputSchema } from "@/modules/booking/validation";
 export async function POST(request: NextRequest) {
   try {
     const input = bookingInputSchema.parse(await request.json());
+    if (requireCustomerAuth(request) !== input.user_id) {
+      throw new ApiError(403, "Not your account");
+    }
     const final = Math.max(0, input.amount - input.discount_amount);
     const booking = await createBooking({
       userId: input.user_id,
@@ -35,6 +39,9 @@ export async function GET(request: NextRequest) {
     const limit = Number(request.nextUrl.searchParams.get("limit") ?? "20") || 20;
     if (!userId) {
       throw new ApiError(400, "user_id is required");
+    }
+    if (requireCustomerAuth(request) !== userId) {
+      throw new ApiError(403, "Not your bookings");
     }
     const bookings = await listBookingsByUser(userId, skip, limit);
     return NextResponse.json(bookings);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { getAdmin } from "@/modules/admin/repository";
 import { updateRideMarshal } from "@/modules/booking/repository/rides";
 import { parseBookingId } from "@/modules/booking/util";
@@ -12,13 +13,14 @@ type Params = { params: Promise<{ id: string }> };
 // null, unassign) the bus marshal conducting this trip.
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const { marshal_admin_id } = rideMarshalInputSchema.parse(await request.json());
 
     if (marshal_admin_id === null) {
       const ride = await updateRideMarshal(id, null, null);
+      recordAuditLog(actor, request, "UPDATE", "ride", id, { marshal_admin_id: null });
       return NextResponse.json(ride);
     }
 
@@ -27,6 +29,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       throw new ApiError(400, `marshal ${marshal_admin_id} not found or not an active bus_marshal`);
     }
     const ride = await updateRideMarshal(id, marshal.id, `${marshal.first_name} ${marshal.last_name}`.trim());
+    recordAuditLog(actor, request, "UPDATE", "ride", id, { marshal_admin_id: marshal.id });
     return NextResponse.json(ride);
   } catch (error) {
     return handleRouteError(error);

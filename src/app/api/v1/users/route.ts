@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
+import { SUPPORT_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { createUser, listUsers } from "@/modules/users/repository";
 import { listQuerySchema, userCreateSchema } from "@/modules/users/validation";
 
-// POST /api/v1/users/
+// POST /api/v1/users/ — not actually called by either frontend today;
+// /auth/signup creates the users row in-process via createUser() directly,
+// not through this HTTP route. Left ungated for now (creation-only, no
+// foreign-id impersonation risk like the routes below) rather than guessing
+// at auth for a route with no current caller to verify against.
 export async function POST(request: NextRequest) {
   try {
     const body = userCreateSchema.parse(await request.json());
@@ -14,9 +19,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/v1/users/?skip=0&limit=100
+// GET /api/v1/users/?skip=0&limit=100 — full directory listing (name,
+// email, phone for every user); admin-only.
 export async function GET(request: NextRequest) {
   try {
+    requireAdminAuth(request, SUPPORT_ROLES);
     const { skip, limit } = listQuerySchema.parse(
       Object.fromEntries(request.nextUrl.searchParams),
     );

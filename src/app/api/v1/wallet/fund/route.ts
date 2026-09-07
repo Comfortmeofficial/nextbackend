@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
 import { FINANCE_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { fundWallet } from "@/modules/wallet/repository";
 import { fundWalletSchema } from "@/modules/wallet/validation";
 
@@ -10,9 +11,10 @@ import { fundWalletSchema } from "@/modules/wallet/validation";
 // route is an admin/finance tool.
 export async function POST(request: NextRequest) {
   try {
-    requireAdminAuth(request, FINANCE_ROLES);
+    const actor = requireAdminAuth(request, FINANCE_ROLES);
     const body = fundWalletSchema.parse(await request.json());
     const tx = await fundWallet(body);
+    recordAuditLog(actor, request, "UPDATE", "wallet", body.user_id, { direction: "fund", ...body });
     return NextResponse.json(tx, { status: 201 });
   } catch (error) {
     return handleRouteError(error);

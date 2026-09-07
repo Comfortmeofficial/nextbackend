@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
 import { FINANCE_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { createMilestone, listMilestones } from "@/modules/rewards/repository";
 import { referralMilestoneCreateSchema } from "@/modules/rewards/validation";
 
@@ -9,9 +10,10 @@ import { referralMilestoneCreateSchema } from "@/modules/rewards/validation";
 // is a customer-facing action and stays ungated by admin auth.
 export async function POST(request: NextRequest) {
   try {
-    requireAdminAuth(request, FINANCE_ROLES);
+    const actor = requireAdminAuth(request, FINANCE_ROLES);
     const body = referralMilestoneCreateSchema.parse(await request.json());
     const milestone = await createMilestone(body);
+    recordAuditLog(actor, request, "CREATE", "referral_milestone", milestone.id, body);
     return NextResponse.json(milestone, { status: 201 });
   } catch (error) {
     return handleRouteError(error);

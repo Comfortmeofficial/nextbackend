@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { resyncRideSeatsForBus } from "@/modules/booking/repository/rides";
 import { busErrorResponse } from "@/modules/buses/errors";
 import { deleteBus, getBus, updateBus } from "@/modules/buses/repository";
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 // PUT /api/v1/buses/{id}
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const id = parseBusId((await params).id);
     const body = updateBusSchema.parse(await request.json());
     const bus = await updateBus(id, body);
@@ -34,6 +35,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         // itself; the bus's own layout is already committed at this point.
       }
     }
+    recordAuditLog(actor, request, "UPDATE", "bus", id, body);
     return NextResponse.json(bus);
   } catch (error) {
     return busErrorResponse(error);
@@ -43,9 +45,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
 // DELETE /api/v1/buses/{id} — a soft "retire", not a real row deletion.
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const id = parseBusId((await params).id);
     await deleteBus(id);
+    recordAuditLog(actor, request, "DELETE", "bus", id);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return busErrorResponse(error);

@@ -1,5 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { ApiError } from "@/lib/http-errors";
+
+// verifyPaymentHub's outer catch deliberately flattens every internal error
+// to a 400, matching the legacy service's bug-for-bug behavior (see the
+// comment above that function). The ownership check added there is new,
+// not a legacy behavior to preserve — a client needs to see a real 403 to
+// tell "this payment isn't yours" apart from "verification failed", so this
+// marker type lets the catch block re-throw it unflattened while every
+// other internal error still flattens to 400 as before.
+class OwnershipError extends ApiError {
+  constructor(detail: string) {
+    super(403, detail);
+  }
+}
 import { addCard as addCardRecord } from "@/modules/cards/repository";
 import {
   sendBookingCancelledNotification,
@@ -375,12 +388,16 @@ export async function payBooking(data: PayBookingRequestInput) {
 
 // ---------- cancel-booking ----------
 
-export async function cancelBookingHub(bookingId: number) {
+export async function cancelBookingHub(bookingId: number, requestingUserId: number) {
   let booking;
   try {
     booking = await getBooking(bookingId);
   } catch {
     throw new ApiError(404, "Booking not found");
+  }
+
+  if (booking.user_id !== requestingUserId) {
+    throw new ApiError(403, "Not your booking");
   }
 
   if (booking.status === "cancelled") {
@@ -698,10 +715,14 @@ export async function payRental(data: PayRentalRequestInput) {
 // function replicates that: nothing internal ever surfaces as 409, only
 // ever 200 or 400, no matter what "logically" happens inside.
 
-export async function verifyPaymentHub(reference: string) {
+export async function verifyPaymentHub(reference: string, requestingUserId: number) {
   try {
     const result = await verifyPaystackPayment(reference);
     const metadata = (result.metadata ?? {}) as Record<string, unknown>;
+    const metadataUserId = metadata.user_id as number | undefined;
+    if (metadataUserId !== undefined && metadataUserId !== requestingUserId) {
+      throw new OwnershipError("Not your payment");
+    }
     const response: Record<string, unknown> = { ...result };
 
     if (result.status === "success") {
@@ -854,8 +875,9 @@ export async function verifyPaymentHub(reference: string) {
 
     return response;
   } catch (err) {
-    // Flattens ANY inner error (including the 409/400 ApiErrors thrown
-    // above) to a 400 — see the comment on this function.
+    if (err instanceof OwnershipError) throw err;
+    // Flattens ANY other inner error (including the 409/400 ApiErrors
+    // thrown above) to a 400 — see the comment on this function.
     throw new ApiError(400, errMessage(err));
   }
 }

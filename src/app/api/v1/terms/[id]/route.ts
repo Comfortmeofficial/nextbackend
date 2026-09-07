@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
 import { FULL_ACCESS, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { getTerms, updateTerms } from "@/modules/terms/repository";
 import { idParamSchema, termsUpdateSchema } from "@/modules/terms/validation";
 
@@ -21,10 +22,11 @@ export async function GET(request: NextRequest, { params }: Params) {
 // PUT /api/v1/terms/{id}
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, FULL_ACCESS);
+    const actor = requireAdminAuth(request, FULL_ACCESS);
     const id = idParamSchema.parse((await params).id);
     const body = termsUpdateSchema.parse(await request.json());
     const terms = await updateTerms(id, body);
+    recordAuditLog(actor, request, "UPDATE", "terms", id);
     return NextResponse.json(terms);
   } catch (error) {
     return handleRouteError(error);

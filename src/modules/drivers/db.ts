@@ -58,6 +58,9 @@ export function ensureDriversSchema(): Promise<void> {
         deleted_at TIMESTAMPTZ
       );
       ALTER TABLE drivers ADD COLUMN IF NOT EXISTS rating_count INTEGER NOT NULL DEFAULT 0;
+      CREATE INDEX IF NOT EXISTS idx_drivers_status ON drivers (status);
+      CREATE INDEX IF NOT EXISTS idx_drivers_verification_status ON drivers (verification_status);
+      CREATE INDEX IF NOT EXISTS idx_drivers_deleted_at ON drivers (deleted_at);
     `)
       .then(() => undefined)
       .catch((err) => {

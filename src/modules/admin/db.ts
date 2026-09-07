@@ -42,6 +42,25 @@ export function ensureAdminSchema(): Promise<void> {
       ALTER TABLE admins DROP CONSTRAINT IF EXISTS admins_role_check;
       ALTER TABLE admins ADD CONSTRAINT admins_role_check
         CHECK (role IN ('SUPER_ADMIN', 'ADMIN', 'OPERATIONS_MANAGER', 'CUSTOMER_SUPPORT', 'FINANCE_OFFICER', 'BUS_MARSHAL'));
+
+      -- One row per admin-triggered mutation across the whole platform, not
+      -- just this database — actor_id/actor_email are captured from the
+      -- token at write time rather than joined against the admins table on
+      -- read, so a log entry survives that admin account later being deleted.
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id SERIAL PRIMARY KEY,
+        actor_id VARCHAR(50) NOT NULL,
+        actor_email VARCHAR(255) NOT NULL,
+        action VARCHAR(20) NOT NULL,
+        resource VARCHAR(50) NOT NULL,
+        resource_id VARCHAR(50),
+        details JSONB,
+        ip_address VARCHAR(64),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs (created_at);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id ON audit_logs (actor_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs (resource, resource_id);
     `)
       .then(() => undefined)
       .catch((err) => {

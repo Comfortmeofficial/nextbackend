@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleRouteError } from "@/lib/http-errors";
+import { ApiError, handleRouteError } from "@/lib/http-errors";
+import { OPS_OR_MARSHAL_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { requireCustomerAuth } from "@/modules/auth/guard";
 import { createRental, listRentals } from "@/modules/booking/repository/rentals";
 import { rentalInputSchema } from "@/modules/booking/validation";
 import type { RentalStatus } from "@/modules/booking/types";
@@ -9,6 +11,9 @@ import type { RentalStatus } from "@/modules/booking/types";
 export async function POST(request: NextRequest) {
   try {
     const input = rentalInputSchema.parse(await request.json());
+    if (requireCustomerAuth(request) !== input.user_id) {
+      throw new ApiError(403, "Not your account");
+    }
     const rental = await createRental({
       userId: input.user_id,
       pickup: input.pickup,
@@ -29,7 +34,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/v1/rentals?skip=0&limit=50&status=&user_id=
+// GET /api/v1/rentals?skip=0&limit=50&status=&user_id= — a rider's own
+// requests when user_id is given, otherwise the admin cross-user listing
+// (matches the pattern admin_web_app's RentalsPage relies on: no user_id).
 export async function GET(request: NextRequest) {
   try {
     const skip = Number(request.nextUrl.searchParams.get("skip") ?? "0") || 0;
@@ -38,6 +45,13 @@ export async function GET(request: NextRequest) {
       | RentalStatus
       | undefined;
     const userId = Number(request.nextUrl.searchParams.get("user_id") ?? "0") || undefined;
+    if (userId) {
+      if (requireCustomerAuth(request) !== userId) {
+        throw new ApiError(403, "Not your rentals");
+      }
+    } else {
+      requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
+    }
     const rentals = await listRentals(skip, limit, status, userId);
     return NextResponse.json(rentals);
   } catch (error) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
+import { recordAuditLog } from "@/modules/admin/audit";
 import { deleteRoute, getRoute } from "@/modules/booking/repository/routes";
 import { parseBookingId } from "@/modules/booking/util";
 
@@ -20,10 +21,11 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    const actor = requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     await deleteRoute(id);
+    recordAuditLog(actor, request, "DELETE", "route", id);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return handleRouteError(error);
