@@ -8,8 +8,9 @@ import type { DriverDto, DriverRow, DriverStatusApi } from "./types";
 import type { DriverCreateInput, DriverUpdateInput } from "./validation";
 
 const SELECT_COLUMNS = `
-  id, first_name, last_name, email, phone, address, emergency_contact, next_of_kin,
-  license_number, TO_CHAR(license_expiry, 'YYYY-MM-DD') AS license_expiry, driver_type,
+  id, first_name, last_name, email, phone, address,
+  next_of_kin, next_of_kin_phone, next_of_kin_relationship,
+  license_number, TO_CHAR(license_expiry, 'YYYY-MM-DD') AS license_expiry,
   password_hash, status, verification_status, is_active, rating, total_trips,
   assigned_bus_id, current_ride_id, created_at, updated_at
 `;
@@ -39,11 +40,11 @@ export async function toDto(row: DriverRow): Promise<DriverDto> {
     email: row.email,
     phone: row.phone,
     address: row.address,
-    emergency_contact: row.emergency_contact,
     next_of_kin: row.next_of_kin,
+    next_of_kin_phone: row.next_of_kin_phone,
+    next_of_kin_relationship: row.next_of_kin_relationship,
     license_number: row.license_number,
     license_expiry: row.license_expiry,
-    driver_type: row.driver_type,
     status: toApiStatus(row.status),
     verification_status: row.verification_status,
     rating: parseFloat(row.rating),
@@ -71,11 +72,11 @@ async function toDtoList(rows: DriverRow[]): Promise<DriverDto[]> {
     email: row.email,
     phone: row.phone,
     address: row.address,
-    emergency_contact: row.emergency_contact,
     next_of_kin: row.next_of_kin,
+    next_of_kin_phone: row.next_of_kin_phone,
+    next_of_kin_relationship: row.next_of_kin_relationship,
     license_number: row.license_number,
     license_expiry: row.license_expiry,
-    driver_type: row.driver_type,
     status: toApiStatus(row.status),
     verification_status: row.verification_status,
     rating: parseFloat(row.rating),
@@ -158,8 +159,9 @@ export async function createDriver(input: DriverCreateInput): Promise<DriverDto>
   const pool = getDriversPool();
   const { rows } = await pool.query<DriverRow>(
     `INSERT INTO drivers (
-       first_name, last_name, email, phone, address, emergency_contact, next_of_kin,
-       license_number, license_expiry, driver_type, password_hash
+       first_name, last_name, email, phone, address,
+       next_of_kin, next_of_kin_phone, next_of_kin_relationship,
+       license_number, license_expiry, password_hash
      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING ${SELECT_COLUMNS}`,
     [
@@ -168,11 +170,11 @@ export async function createDriver(input: DriverCreateInput): Promise<DriverDto>
       input.email,
       input.phone,
       input.address ?? null,
-      input.emergency_contact ?? null,
       input.next_of_kin ?? null,
+      input.next_of_kin_phone ?? null,
+      input.next_of_kin_relationship ?? null,
       input.license_number,
       input.license_expiry ?? null,
-      input.driver_type ?? null,
       passwordHash,
     ],
   );
@@ -206,17 +208,13 @@ export async function getDriver(id: number): Promise<DriverDto> {
   return toDto(row);
 }
 
-// Server-side counterpart to the "verification_status === 'approved' &&
-// status !== 'suspended'" filter every admin dropdown already applies
-// client-side — that filter is UX only and was never actually enforced, so a
-// pending/rejected/suspended driver could be assigned via a direct API call.
+// Drivers have no verification/approval step — they're assignable as soon
+// as they're created. The only thing that blocks an assignment is being
+// suspended.
 export async function assertDriverAssignable(id: number): Promise<void> {
   const row = await findActiveById(id);
   if (!row) {
     throw new ApiError(404, "Driver not found");
-  }
-  if (row.verification_status !== "approved") {
-    throw new ApiError(400, `driver ${id} is not approved (verification status: ${row.verification_status})`);
   }
   if (toApiStatus(row.status) === "suspended") {
     throw new ApiError(400, `driver ${id} is suspended`);
@@ -252,13 +250,12 @@ export async function updateDriver(id: number, input: DriverUpdateInput): Promis
     email: input.email,
     phone: input.phone,
     address: input.address,
-    emergency_contact: input.emergency_contact,
     next_of_kin: input.next_of_kin,
+    next_of_kin_phone: input.next_of_kin_phone,
+    next_of_kin_relationship: input.next_of_kin_relationship,
     license_number: input.license_number,
     license_expiry: input.license_expiry,
-    driver_type: input.driver_type,
     status: input.status ? toDbStatus(input.status) : null,
-    verification_status: input.verification_status,
   });
 }
 

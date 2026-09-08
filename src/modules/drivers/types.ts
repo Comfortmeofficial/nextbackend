@@ -8,15 +8,15 @@ export interface DriverRow {
   email: string;
   phone: string;
   address: string | null;
-  emergency_contact: string | null;
   next_of_kin: string | null;
+  next_of_kin_phone: string | null;
+  next_of_kin_relationship: string | null;
   license_number: string;
   // Fetched via TO_CHAR(..., 'YYYY-MM-DD') rather than letting node-postgres
   // parse DATE into a JS Date — pg's default DATE parsing constructs a Date
   // at local midnight, which can shift the calendar day depending on the
   // server's timezone. A plain string sidesteps that entirely.
   license_expiry: string | null;
-  driver_type: string | null;
   password_hash: string;
   status: DriverStatusDb;
   verification_status: string;
@@ -37,11 +37,11 @@ export interface DriverDto {
   email: string;
   phone: string;
   address: string | null;
-  emergency_contact: string | null;
   next_of_kin: string | null;
+  next_of_kin_phone: string | null;
+  next_of_kin_relationship: string | null;
   license_number: string;
   license_expiry: string | null;
-  driver_type: string | null;
   status: DriverStatusApi;
   verification_status: string;
   rating: number;

@@ -20,9 +20,9 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 }
 
-// PUT /api/v1/drivers/{driver_id} — also how the dashboard approves,
-// rejects, suspends, and reinstates a driver (same endpoint, different body
-// fields), so this single check covers all of those.
+// PUT /api/v1/drivers/{driver_id} — also how the dashboard suspends and
+// reinstates a driver (same endpoint, different body fields), so this
+// single check covers both.
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
     const actor = requireAdminAuth(request, OPS_ROLES);
