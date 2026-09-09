@@ -57,6 +57,28 @@ export function ensureBusesSchema(): Promise<void> {
         PRIMARY KEY (bus_id, marshal_id)
       );
       CREATE INDEX IF NOT EXISTS idx_bus_marshals_marshal_id ON bus_marshals (marshal_id);
+
+      -- Picture and insurance document/dates are single-valued (one current
+      -- picture, one current insurance policy), stored directly on the bus
+      -- row. Images are stored as data URIs (no object storage configured
+      -- for this app) — fine at admin-tool scale (a handful of buses,
+      -- occasional updates), not meant for high-volume user uploads.
+      ALTER TABLE buses ADD COLUMN IF NOT EXISTS picture TEXT;
+      ALTER TABLE buses ADD COLUMN IF NOT EXISTS insurance_document TEXT;
+      ALTER TABLE buses ADD COLUMN IF NOT EXISTS insurance_incorporation_date DATE;
+      ALTER TABLE buses ADD COLUMN IF NOT EXISTS insurance_expiry_date DATE;
+
+      -- Unlike picture/insurance, a bus can have any number of other
+      -- documents (roadworthiness certificate, permit, etc.), each with its
+      -- own title — a separate table rather than more single columns.
+      CREATE TABLE IF NOT EXISTS bus_documents (
+        id SERIAL PRIMARY KEY,
+        bus_id INTEGER NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        image TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_bus_documents_bus_id ON bus_documents (bus_id);
     `)
       .then(() => undefined)
       .catch((err) => {

@@ -74,6 +74,12 @@ export function ensureDriversSchema(): Promise<void> {
       UPDATE drivers SET status = 'ACTIVE' WHERE status = 'ON_TRIP';
       UPDATE drivers SET status = 'INACTIVE' WHERE status IN ('AVAILABLE', 'ASSIGNED', 'OFFLINE', 'ON_LEAVE');
       ALTER TABLE drivers ADD CONSTRAINT drivers_status_check CHECK (status IN ('ACTIVE', 'INACTIVE', 'SUSPENDED'));
+      -- CREATE TABLE IF NOT EXISTS's own DEFAULT 'INACTIVE' above only takes
+      -- effect on a fresh table — it never retroactively changes the column
+      -- default on one that already existed (stuck at the old 'OFFLINE'),
+      -- so every new driver created without an explicit status violated the
+      -- constraint just added. Needs its own explicit ALTER.
+      ALTER TABLE drivers ALTER COLUMN status SET DEFAULT 'INACTIVE';
       CREATE INDEX IF NOT EXISTS idx_drivers_status ON drivers (status);
       CREATE INDEX IF NOT EXISTS idx_drivers_verification_status ON drivers (verification_status);
       CREATE INDEX IF NOT EXISTS idx_drivers_deleted_at ON drivers (deleted_at);

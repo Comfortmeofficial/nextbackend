@@ -35,7 +35,15 @@ export async function PUT(request: NextRequest, { params }: Params) {
         // itself; the bus's own layout is already committed at this point.
       }
     }
-    recordAuditLog(actor, request, "UPDATE", "bus", id, body);
+    // picture/insurance_document are base64 data URIs — logging the field
+    // names (and every other changed field) is useful, logging the image
+    // data itself would just bloat every audit row that touches them.
+    const { picture, insurance_document, ...loggableBody } = body;
+    recordAuditLog(actor, request, "UPDATE", "bus", id, {
+      ...loggableBody,
+      ...(picture !== undefined ? { picture: "<updated>" } : {}),
+      ...(insurance_document !== undefined ? { insurance_document: "<updated>" } : {}),
+    });
     return NextResponse.json(bus);
   } catch (error) {
     return busErrorResponse(error);

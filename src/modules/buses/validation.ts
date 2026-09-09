@@ -70,6 +70,10 @@ export const updateBusSchema = z.object({
   status: busStatusSchema.nullable().optional(),
   driver_id: z.number().int().nullable().optional(),
   layout: seatLayoutSchema.nullable().optional(),
+  picture: z.string().nullable().optional(),
+  insurance_document: z.string().nullable().optional(),
+  insurance_incorporation_date: z.string().nullable().optional(),
+  insurance_expiry_date: z.string().nullable().optional(),
 });
 export type UpdateBusInput = z.infer<typeof updateBusSchema>;
 
@@ -80,3 +84,9 @@ export const assignDriverSchema = z.object({
 export const assignMarshalSchema = z.object({
   marshal_id: z.number().int(),
 });
+
+export const createBusDocumentSchema = z.object({
+  title: z.string().min(1),
+  image: z.string().min(1),
+});
+export type CreateBusDocumentInput = z.infer<typeof createBusDocumentSchema>;

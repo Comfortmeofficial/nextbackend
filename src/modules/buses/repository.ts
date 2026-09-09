@@ -1,8 +1,9 @@
 import { getAdmin } from "@/modules/admin/repository";
+import { getCurrentRideIdForBus, getCurrentRideIdsForBuses } from "@/modules/booking/repository/rides";
 import { BusError } from "./errors";
 import { ensureBusesSchema, getBusesPool } from "./db";
-import type { BusDto, BusRow, SeatLayout } from "./types";
-import type { CreateBusInput, UpdateBusInput } from "./validation";
+import type { BusDocumentDto, BusDocumentRow, BusDto, BusRow, SeatLayout } from "./types";
+import type { CreateBusDocumentInput, CreateBusInput, UpdateBusInput } from "./validation";
 
 function generateLayout(rows: number, cols: number): SeatLayout {
   const seats = [];
@@ -25,7 +26,22 @@ function layoutCapacity(layout: SeatLayout): number {
   return layout.seats.filter((s) => s.is_seat).length;
 }
 
+// Explicit column list (rather than SELECT */RETURNING *) so the two new
+// DATE columns go through TO_CHAR — letting node-postgres parse them as JS
+// Dates risks the same local-midnight/timezone shift called out on
+// drivers.license_expiry; a plain string sidesteps that entirely.
+const SELECT_COLUMNS = `
+  id, plate_number, capacity, model, status, driver_id, picture, insurance_document,
+  TO_CHAR(insurance_incorporation_date, 'YYYY-MM-DD') AS insurance_incorporation_date,
+  TO_CHAR(insurance_expiry_date, 'YYYY-MM-DD') AS insurance_expiry_date,
+  layout, created_at, updated_at
+`;
+
 async function toDto(row: BusRow): Promise<BusDto> {
+  const [marshalIds, currentRideId] = await Promise.all([
+    getMarshalIdsForBus(row.id),
+    getCurrentRideIdForBus(row.id),
+  ]);
   return {
     id: row.id,
     plate_number: row.plate_number,
@@ -33,7 +49,12 @@ async function toDto(row: BusRow): Promise<BusDto> {
     model: row.model,
     status: row.status as BusDto["status"],
     driver_id: row.driver_id,
-    marshal_ids: await getMarshalIdsForBus(row.id),
+    marshal_ids: marshalIds,
+    current_ride_id: currentRideId,
+    picture: row.picture,
+    insurance_document: row.insurance_document,
+    insurance_incorporation_date: row.insurance_incorporation_date,
+    insurance_expiry_date: row.insurance_expiry_date,
     layout: row.layout,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
@@ -41,10 +62,14 @@ async function toDto(row: BusRow): Promise<BusDto> {
 }
 
 // Batched counterpart to toDto for list endpoints — avoids N+1 queries
-// against bus_marshals when rendering the full buses table.
+// against bus_marshals/rides when rendering the full buses table.
 async function toDtoList(rows: BusRow[]): Promise<BusDto[]> {
   if (rows.length === 0) return [];
-  const marshalIds = await getMarshalIdsForBuses(rows.map((r) => r.id));
+  const ids = rows.map((r) => r.id);
+  const [marshalIds, currentRideIds] = await Promise.all([
+    getMarshalIdsForBuses(ids),
+    getCurrentRideIdsForBuses(ids),
+  ]);
   return rows.map((row) => ({
     id: row.id,
     plate_number: row.plate_number,
@@ -53,6 +78,11 @@ async function toDtoList(rows: BusRow[]): Promise<BusDto[]> {
     status: row.status as BusDto["status"],
     driver_id: row.driver_id,
     marshal_ids: marshalIds.get(row.id) ?? [],
+    current_ride_id: currentRideIds.get(row.id) ?? null,
+    picture: row.picture,
+    insurance_document: row.insurance_document,
+    insurance_incorporation_date: row.insurance_incorporation_date,
+    insurance_expiry_date: row.insurance_expiry_date,
     layout: row.layout,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
@@ -72,7 +102,7 @@ export async function createBus(input: CreateBusInput): Promise<BusDto> {
   const pool = getBusesPool();
   try {
     const { rows } = await pool.query<BusRow>(
-      `INSERT INTO buses (plate_number, capacity, model, layout) VALUES ($1, $2, $3, $4) RETURNING *`,
+      `INSERT INTO buses (plate_number, capacity, model, layout) VALUES ($1, $2, $3, $4) RETURNING ${SELECT_COLUMNS}`,
       [input.plate_number, capacity, input.model, JSON.stringify(layout)],
     );
     return toDto(rows[0]);
@@ -88,7 +118,7 @@ export async function listBuses(): Promise<BusDto[]> {
   const pool = getBusesPool();
   try {
     const { rows } = await pool.query<BusRow>(
-      `SELECT * FROM buses WHERE status != 'retired' ORDER BY id`,
+      `SELECT ${SELECT_COLUMNS} FROM buses WHERE status != 'retired' ORDER BY id`,
     );
     return toDtoList(rows);
   } catch {
@@ -103,7 +133,7 @@ export async function getBus(id: number): Promise<BusDto> {
   const pool = getBusesPool();
   let rows;
   try {
-    ({ rows } = await pool.query<BusRow>(`SELECT * FROM buses WHERE id = $1`, [id]));
+    ({ rows } = await pool.query<BusRow>(`SELECT ${SELECT_COLUMNS} FROM buses WHERE id = $1`, [id]));
   } catch {
     throw new BusError(500);
   }
@@ -121,7 +151,7 @@ export async function updateBus(id: number, input: UpdateBusInput): Promise<BusD
 
   let existingRows;
   try {
-    existingRows = (await pool.query<BusRow>(`SELECT * FROM buses WHERE id = $1`, [id])).rows;
+    existingRows = (await pool.query<BusRow>(`SELECT ${SELECT_COLUMNS} FROM buses WHERE id = $1`, [id])).rows;
   } catch {
     throw new BusError(500);
   }
@@ -136,12 +166,30 @@ export async function updateBus(id: number, input: UpdateBusInput): Promise<BusD
   const newDriverId = input.driver_id ?? existing.driver_id;
   const newLayout = input.layout ?? existing.layout;
   const newCapacity = layoutCapacity(newLayout);
+  const newPicture = input.picture ?? existing.picture;
+  const newInsuranceDocument = input.insurance_document ?? existing.insurance_document;
+  const newInsuranceIncorporationDate = input.insurance_incorporation_date ?? existing.insurance_incorporation_date;
+  const newInsuranceExpiryDate = input.insurance_expiry_date ?? existing.insurance_expiry_date;
 
   try {
     const { rows } = await pool.query<BusRow>(
-      `UPDATE buses SET plate_number=$2, model=$3, status=$4, driver_id=$5, layout=$6, capacity=$7, updated_at=NOW()
-       WHERE id=$1 RETURNING *`,
-      [id, newPlate, newModel, newStatus, newDriverId, JSON.stringify(newLayout), newCapacity],
+      `UPDATE buses SET plate_number=$2, model=$3, status=$4, driver_id=$5, layout=$6, capacity=$7,
+         picture=$8, insurance_document=$9, insurance_incorporation_date=$10, insurance_expiry_date=$11,
+         updated_at=NOW()
+       WHERE id=$1 RETURNING ${SELECT_COLUMNS}`,
+      [
+        id,
+        newPlate,
+        newModel,
+        newStatus,
+        newDriverId,
+        JSON.stringify(newLayout),
+        newCapacity,
+        newPicture,
+        newInsuranceDocument,
+        newInsuranceIncorporationDate,
+        newInsuranceExpiryDate,
+      ],
     );
     return toDto(rows[0]);
   } catch {
@@ -155,7 +203,7 @@ export async function assignDriver(id: number, driverId: number): Promise<BusDto
   let rows;
   try {
     ({ rows } = await pool.query<BusRow>(
-      `UPDATE buses SET driver_id=$2, updated_at=NOW() WHERE id=$1 RETURNING *`,
+      `UPDATE buses SET driver_id=$2, updated_at=NOW() WHERE id=$1 RETURNING ${SELECT_COLUMNS}`,
       [id, driverId],
     ));
   } catch {
@@ -173,7 +221,7 @@ export async function unassignDriver(id: number): Promise<BusDto> {
   let rows;
   try {
     ({ rows } = await pool.query<BusRow>(
-      `UPDATE buses SET driver_id=NULL, updated_at=NOW() WHERE id=$1 RETURNING *`,
+      `UPDATE buses SET driver_id=NULL, updated_at=NOW() WHERE id=$1 RETURNING ${SELECT_COLUMNS}`,
       [id],
     ));
   } catch {
@@ -325,6 +373,49 @@ export async function deleteBus(id: number): Promise<void> {
   } catch {
     throw new BusError(500);
   }
+  if (!rowCount) {
+    throw new BusError(404);
+  }
+}
+
+function toDocumentDto(row: BusDocumentRow): BusDocumentDto {
+  return {
+    id: row.id,
+    bus_id: row.bus_id,
+    title: row.title,
+    image: row.image,
+    created_at: row.created_at.toISOString(),
+  };
+}
+
+export async function listBusDocuments(busId: number): Promise<BusDocumentDto[]> {
+  await ensureBusesSchema();
+  const pool = getBusesPool();
+  const { rows } = await pool.query<BusDocumentRow>(
+    `SELECT * FROM bus_documents WHERE bus_id = $1 ORDER BY created_at DESC`,
+    [busId],
+  );
+  return rows.map(toDocumentDto);
+}
+
+export async function createBusDocument(busId: number, input: CreateBusDocumentInput): Promise<BusDocumentDto> {
+  await ensureBusesSchema();
+  await getBus(busId); // 404s if the bus doesn't exist
+  const pool = getBusesPool();
+  const { rows } = await pool.query<BusDocumentRow>(
+    `INSERT INTO bus_documents (bus_id, title, image) VALUES ($1, $2, $3) RETURNING *`,
+    [busId, input.title, input.image],
+  );
+  return toDocumentDto(rows[0]);
+}
+
+export async function deleteBusDocument(busId: number, documentId: number): Promise<void> {
+  await ensureBusesSchema();
+  const pool = getBusesPool();
+  const { rowCount } = await pool.query(
+    `DELETE FROM bus_documents WHERE id = $1 AND bus_id = $2`,
+    [documentId, busId],
+  );
   if (!rowCount) {
     throw new BusError(404);
   }
