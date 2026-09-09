@@ -6,7 +6,7 @@ import { listAvailableDrivers } from "@/modules/drivers/repository";
 // GET /api/v1/drivers/available
 export async function GET(request: NextRequest) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    await requireAdminAuth(request, OPS_ROLES);
     const drivers = await listAvailableDrivers();
     return NextResponse.json(drivers);
   } catch (error) {

@@ -17,7 +17,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const headerError = requireRequestId(request);
   if (headerError) return headerError;
   try {
-    const actor = requireAdminAuth(request, SUPER_ADMIN_ONLY);
+    const actor = await requireAdminAuth(request, SUPER_ADMIN_ONLY);
     const id = idParamSchema.parse((await params).id);
     const temporary_password = await resetPassword(id);
     // Never put the temporary password itself into the audit details.

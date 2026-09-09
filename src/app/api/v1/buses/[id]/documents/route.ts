@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 // GET /api/v1/buses/{id}/documents
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    await requireAdminAuth(request, OPS_ROLES);
     const id = parseBusId((await params).id);
     const documents = await listBusDocuments(id);
     return NextResponse.json(documents);
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 // unlike the single picture/insurance_document columns on the bus itself.
 export async function POST(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const id = parseBusId((await params).id);
     const body = createBusDocumentSchema.parse(await request.json());
     const document = await createBusDocument(id, body);

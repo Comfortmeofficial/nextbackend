@@ -11,7 +11,7 @@ type Params = { params: Promise<{ id: string }> };
 // PUT /api/v1/referrals/milestones/{id}
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, FINANCE_ROLES);
+    const actor = await requireAdminAuth(request, FINANCE_ROLES);
     const id = idParamSchema.parse((await params).id);
     const body = referralMilestoneUpdateSchema.parse(await request.json());
     const milestone = await updateMilestone(id, body);
@@ -25,7 +25,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 // DELETE /api/v1/referrals/milestones/{id}
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, FINANCE_ROLES);
+    const actor = await requireAdminAuth(request, FINANCE_ROLES);
     const id = idParamSchema.parse((await params).id);
     await deleteMilestone(id);
     recordAuditLog(actor, request, "DELETE", "referral_milestone", id);

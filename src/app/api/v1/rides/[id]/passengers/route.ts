@@ -11,7 +11,7 @@ type Params = { params: Promise<{ id: string }> };
 // only sees the ride(s) they're actually assigned to conduct.
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    const claims = requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
+    const claims = await requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
 

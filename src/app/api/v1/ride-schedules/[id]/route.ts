@@ -28,7 +28,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 // never touches rides already generated from it.
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const input = rideScheduleInputSchema.parse(await request.json());
@@ -43,7 +43,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 // DELETE /api/v1/ride-schedules/{id} — stops future generation only.
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     await deleteRideSchedule(id);

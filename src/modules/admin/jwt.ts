@@ -14,6 +14,9 @@ export interface AdminTokenPayload {
   sub: string;
   email: string;
   role: string;
+  // jsonwebtoken stamps this at sign time — declared here so guard.ts can
+  // compare it against admins.tokens_invalidated_at for force-logout.
+  iat?: number;
 }
 
 export function createAccessToken(payload: AdminTokenPayload): string {

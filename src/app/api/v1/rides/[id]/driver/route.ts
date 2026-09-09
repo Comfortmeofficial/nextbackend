@@ -12,7 +12,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const { driver_id } = rideDriverInputSchema.parse(await request.json());

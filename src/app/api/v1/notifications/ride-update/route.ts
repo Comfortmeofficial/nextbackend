@@ -10,7 +10,7 @@ import { rideUpdateSchema } from "@/modules/notifications/validation";
 // caller exists), so this is safe to gate without breaking anything else.
 export async function POST(request: NextRequest) {
   try {
-    const actor = requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
+    const actor = await requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
     const data = rideUpdateSchema.parse(await request.json());
     const result = await sendRideUpdate(data);
     recordAuditLog(actor, request, "UPDATE", "notification", data.ride_id, data);

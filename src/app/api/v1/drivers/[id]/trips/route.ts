@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 // first, for the admin dashboard's driver profile.
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    await requireAdminAuth(request, OPS_ROLES);
     const id = idParamSchema.parse((await params).id);
     const trips = await listRidesByDriver(id);
     return NextResponse.json(trips);

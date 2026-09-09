@@ -12,7 +12,7 @@ type Params = { params: Promise<{ id: string }> };
 // Marshals detail page, enriched the same way as the list route.
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    await requireAdminAuth(request, OPS_ROLES);
     const id = idParamSchema.parse((await params).id);
     const marshal = await getAdmin(id);
     if (!marshal || marshal.role !== "bus_marshal") {

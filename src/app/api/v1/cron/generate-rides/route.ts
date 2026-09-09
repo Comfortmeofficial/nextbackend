@@ -12,7 +12,7 @@ import { ensureScheduledRidesGenerated } from "@/modules/booking/repository/ride
 // often as needed.
 export async function GET(request: NextRequest) {
   try {
-    requireCronOrAdminAuth(request, OPS_ROLES);
+    await requireCronOrAdminAuth(request, OPS_ROLES);
     const summary = await ensureScheduledRidesGenerated();
     return NextResponse.json(summary);
   } catch (error) {

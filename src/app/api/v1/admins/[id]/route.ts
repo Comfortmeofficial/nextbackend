@@ -10,7 +10,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   const headerError = requireRequestId(request);
   if (headerError) return headerError;
   try {
-    requireAdminAuth(request, FULL_ACCESS);
+    await requireAdminAuth(request, FULL_ACCESS);
     const id = idParamSchema.parse((await params).id);
     const admin = await getAdmin(id);
     if (!admin) {
@@ -26,7 +26,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const headerError = requireRequestId(request);
   if (headerError) return headerError;
   try {
-    requireAdminAuth(request, SUPER_ADMIN_ONLY);
+    await requireAdminAuth(request, SUPER_ADMIN_ONLY);
     const id = idParamSchema.parse((await params).id);
     const body = adminUpdateSchema.parse(await request.json());
     const admin = await updateAdmin(id, body);
@@ -40,7 +40,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   const headerError = requireRequestId(request);
   if (headerError) return headerError;
   try {
-    requireAdminAuth(request, SUPER_ADMIN_ONLY);
+    await requireAdminAuth(request, SUPER_ADMIN_ONLY);
     const id = idParamSchema.parse((await params).id);
     await deleteAdmin(id);
     return new NextResponse(null, { status: 204 });

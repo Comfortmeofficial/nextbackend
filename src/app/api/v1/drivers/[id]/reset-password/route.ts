@@ -12,7 +12,7 @@ type Params = { params: Promise<{ id: string }> };
 // admin token rather than being open to anyone who knows a driver id.
 export async function POST(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const id = idParamSchema.parse((await params).id);
     const temporary_password = await resetPassword(id);
     // Never put the temporary password itself into the audit details.

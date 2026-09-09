@@ -12,7 +12,7 @@ type Params = { params: Promise<{ id: string }> };
 // is a no-op (ON CONFLICT DO NOTHING in the repository).
 export async function POST(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const id = parseBusId((await params).id);
     const { marshal_id } = assignMarshalSchema.parse(await request.json());
     const bus = await assignMarshalToBus(id, marshal_id);

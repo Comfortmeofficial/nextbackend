@@ -152,3 +152,17 @@ export async function deleteAdmin(id: number): Promise<void> {
   const pool = getAdminPool();
   await pool.query(`UPDATE admins SET deleted_at = now() WHERE id = $1`, [id]);
 }
+
+// Stamps tokens_invalidated_at so guard.ts's requireAdminAuth rejects every
+// token this admin currently holds, on their very next request — see the
+// comment on requireAdminAuth for why this is the mechanism (no session
+// store to revoke instead).
+export async function forceLogout(id: number): Promise<void> {
+  await ensureAdminSchema();
+  const row = await findActiveById(id);
+  if (!row) {
+    throw new ApiError(404, "Admin not found");
+  }
+  const pool = getAdminPool();
+  await pool.query(`UPDATE admins SET tokens_invalidated_at = now() WHERE id = $1`, [id]);
+}

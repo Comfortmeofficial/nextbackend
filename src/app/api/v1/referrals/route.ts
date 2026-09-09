@@ -8,7 +8,7 @@ import { listQuerySchema, referralCodeCreateSchema } from "@/modules/rewards/val
 // POST /api/v1/referrals/
 export async function POST(request: NextRequest) {
   try {
-    const actor = requireAdminAuth(request, FINANCE_ROLES);
+    const actor = await requireAdminAuth(request, FINANCE_ROLES);
     const body = referralCodeCreateSchema.parse(await request.json());
     const referral = await createReferralCode(body);
     recordAuditLog(actor, request, "CREATE", "referral_code", referral.id, { code: referral.code });
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 // uses /referrals/mine for a user's own code); not called by mobile.
 export async function GET(request: NextRequest) {
   try {
-    requireAdminAuth(request, FINANCE_ROLES);
+    await requireAdminAuth(request, FINANCE_ROLES);
     const { skip, limit } = listQuerySchema.parse(
       Object.fromEntries(request.nextUrl.searchParams),
     );

@@ -15,7 +15,7 @@ type Params = { params: Promise<{ id: string }> };
 // bus_marshal-ownership check as GET /rides/{id}/passengers.
 export async function POST(request: NextRequest, { params }: Params) {
   try {
-    const claims = requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
+    const claims = await requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
 

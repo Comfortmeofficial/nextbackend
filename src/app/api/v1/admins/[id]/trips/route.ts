@@ -12,7 +12,7 @@ type Params = { params: Promise<{ id: string }> };
 // reference them) so there's no separate marshal-only route needed here.
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    await requireAdminAuth(request, OPS_ROLES);
     const id = idParamSchema.parse((await params).id);
     const trips = await listRidesByMarshal(id);
     return NextResponse.json(trips);

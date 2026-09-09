@@ -11,7 +11,7 @@ type Params = { params: Promise<{ code: string }> };
 // called by mobile (which uses /referrals/mine), admin-only lookup.
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, FINANCE_ROLES);
+    await requireAdminAuth(request, FINANCE_ROLES);
     const { code } = await params;
     const referral = await getReferralCode(code);
     return NextResponse.json(referral);
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 // the numeric id (the legacy service names it differently per-route too).
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, FINANCE_ROLES);
+    const actor = await requireAdminAuth(request, FINANCE_ROLES);
     const codeId = idParamSchema.parse((await params).code);
     await deactivateReferralCode(codeId);
     recordAuditLog(actor, request, "DELETE", "referral_code", codeId);

@@ -11,7 +11,7 @@ type Params = { params: Promise<{ id: string }> };
 // GET /api/v1/drivers/{driver_id}
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    await requireAdminAuth(request, OPS_ROLES);
     const id = idParamSchema.parse((await params).id);
     const driver = await getDriver(id);
     return NextResponse.json(driver);
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 // single check covers both.
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const id = idParamSchema.parse((await params).id);
     const body = driverUpdateSchema.parse(await request.json());
     const driver = await updateDriver(id, body);
@@ -39,7 +39,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 // DELETE /api/v1/drivers/{driver_id}
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const id = idParamSchema.parse((await params).id);
     await deleteDriver(id);
     recordAuditLog(actor, request, "DELETE", "driver", id);

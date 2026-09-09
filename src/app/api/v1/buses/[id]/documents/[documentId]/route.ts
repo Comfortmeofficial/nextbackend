@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string; documentId: string }> };
 // DELETE /api/v1/buses/{id}/documents/{documentId}
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const { id: rawId, documentId: rawDocumentId } = await params;
     const id = parseBusId(rawId);
     const documentId = parseBusId(rawDocumentId);

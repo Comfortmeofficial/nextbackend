@@ -10,7 +10,7 @@ import { referralMilestoneCreateSchema } from "@/modules/rewards/validation";
 // is a customer-facing action and stays ungated by admin auth.
 export async function POST(request: NextRequest) {
   try {
-    const actor = requireAdminAuth(request, FINANCE_ROLES);
+    const actor = await requireAdminAuth(request, FINANCE_ROLES);
     const body = referralMilestoneCreateSchema.parse(await request.json());
     const milestone = await createMilestone(body);
     recordAuditLog(actor, request, "CREATE", "referral_milestone", milestone.id, body);
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 // (the admin dashboard needs to see and toggle those too).
 export async function GET(request: NextRequest) {
   try {
-    requireAdminAuth(request, FINANCE_ROLES);
+    await requireAdminAuth(request, FINANCE_ROLES);
     const milestones = await listMilestones(false);
     return NextResponse.json(milestones);
   } catch (error) {

@@ -28,7 +28,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 // included, to 400).
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
+    const actor = await requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     await cancelBooking(id);

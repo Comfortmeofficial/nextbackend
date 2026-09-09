@@ -14,7 +14,7 @@ import { getBusIdsForMarshals } from "@/modules/buses/repository";
 // admin/repository.ts).
 export async function GET(request: NextRequest) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    await requireAdminAuth(request, OPS_ROLES);
     const marshals = await listMarshals();
     const ids = marshals.map((m) => m.id);
     const [currentRideIds, busIds] = await Promise.all([

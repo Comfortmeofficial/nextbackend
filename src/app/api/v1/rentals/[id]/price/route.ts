@@ -14,7 +14,7 @@ type Params = { params: Promise<{ id: string }> };
 // should ever set their own rental's price.
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, FINANCE_ROLES);
+    await requireAdminAuth(request, FINANCE_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const { amount } = rentalPriceInputSchema.parse(await request.json());

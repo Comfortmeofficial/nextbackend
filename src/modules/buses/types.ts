@@ -38,6 +38,7 @@ export interface BusRow {
   model: string;
   status: string; // stored as plain lowercase text, unlike the SQLAlchemy services
   driver_id: number | null;
+  bus_type: string | null;
   picture: string | null;
   insurance_document: string | null;
   // Fetched via TO_CHAR(..., 'YYYY-MM-DD') rather than letting node-postgres
@@ -64,6 +65,7 @@ export interface BusDto {
   model: string;
   status: BusStatus;
   driver_id: number | null;
+  bus_type: string | null;
   marshal_ids: number[];
   current_ride_id: number | null;
   picture: string | null;

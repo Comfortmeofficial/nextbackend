@@ -31,7 +31,7 @@ function layoutCapacity(layout: SeatLayout): number {
 // Dates risks the same local-midnight/timezone shift called out on
 // drivers.license_expiry; a plain string sidesteps that entirely.
 const SELECT_COLUMNS = `
-  id, plate_number, capacity, model, status, driver_id, picture, insurance_document,
+  id, plate_number, capacity, model, status, driver_id, bus_type, picture, insurance_document,
   TO_CHAR(insurance_incorporation_date, 'YYYY-MM-DD') AS insurance_incorporation_date,
   TO_CHAR(insurance_expiry_date, 'YYYY-MM-DD') AS insurance_expiry_date,
   layout, created_at, updated_at
@@ -49,6 +49,7 @@ async function toDto(row: BusRow): Promise<BusDto> {
     model: row.model,
     status: row.status as BusDto["status"],
     driver_id: row.driver_id,
+    bus_type: row.bus_type,
     marshal_ids: marshalIds,
     current_ride_id: currentRideId,
     picture: row.picture,
@@ -77,6 +78,7 @@ async function toDtoList(rows: BusRow[]): Promise<BusDto[]> {
     model: row.model,
     status: row.status as BusDto["status"],
     driver_id: row.driver_id,
+    bus_type: row.bus_type,
     marshal_ids: marshalIds.get(row.id) ?? [],
     current_ride_id: currentRideIds.get(row.id) ?? null,
     picture: row.picture,
@@ -102,8 +104,8 @@ export async function createBus(input: CreateBusInput): Promise<BusDto> {
   const pool = getBusesPool();
   try {
     const { rows } = await pool.query<BusRow>(
-      `INSERT INTO buses (plate_number, capacity, model, layout) VALUES ($1, $2, $3, $4) RETURNING ${SELECT_COLUMNS}`,
-      [input.plate_number, capacity, input.model, JSON.stringify(layout)],
+      `INSERT INTO buses (plate_number, capacity, model, layout, bus_type) VALUES ($1, $2, $3, $4, $5) RETURNING ${SELECT_COLUMNS}`,
+      [input.plate_number, capacity, input.model, JSON.stringify(layout), input.bus_type ?? null],
     );
     return toDto(rows[0]);
   } catch {
@@ -164,6 +166,7 @@ export async function updateBus(id: number, input: UpdateBusInput): Promise<BusD
   const newModel = input.model ?? existing.model;
   const newStatus = input.status ?? existing.status;
   const newDriverId = input.driver_id ?? existing.driver_id;
+  const newBusType = input.bus_type ?? existing.bus_type;
   const newLayout = input.layout ?? existing.layout;
   const newCapacity = layoutCapacity(newLayout);
   const newPicture = input.picture ?? existing.picture;
@@ -175,7 +178,7 @@ export async function updateBus(id: number, input: UpdateBusInput): Promise<BusD
     const { rows } = await pool.query<BusRow>(
       `UPDATE buses SET plate_number=$2, model=$3, status=$4, driver_id=$5, layout=$6, capacity=$7,
          picture=$8, insurance_document=$9, insurance_incorporation_date=$10, insurance_expiry_date=$11,
-         updated_at=NOW()
+         bus_type=$12, updated_at=NOW()
        WHERE id=$1 RETURNING ${SELECT_COLUMNS}`,
       [
         id,
@@ -189,6 +192,7 @@ export async function updateBus(id: number, input: UpdateBusInput): Promise<BusD
         newInsuranceDocument,
         newInsuranceIncorporationDate,
         newInsuranceExpiryDate,
+        newBusType,
       ],
     );
     return toDto(rows[0]);

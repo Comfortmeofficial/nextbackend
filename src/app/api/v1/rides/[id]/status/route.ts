@@ -14,7 +14,7 @@ type Params = { params: Promise<{ id: string }> };
 // it's genuinely admin-shaped, not driver-side).
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const { status } = rideStatusInputSchema.parse(await request.json());

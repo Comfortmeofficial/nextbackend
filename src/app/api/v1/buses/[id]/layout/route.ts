@@ -9,7 +9,7 @@ type Params = { params: Promise<{ id: string }> };
 // GET /api/v1/buses/{id}/layout — returns the raw SeatLayout, not the full bus.
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    await requireAdminAuth(request, OPS_ROLES);
     const id = parseBusId((await params).id);
     const layout = await getBusLayout(id);
     return NextResponse.json(layout);

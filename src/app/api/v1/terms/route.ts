@@ -8,7 +8,7 @@ import { listQuerySchema, termsCreateSchema } from "@/modules/terms/validation";
 // POST /api/v1/terms/
 export async function POST(request: NextRequest) {
   try {
-    const actor = requireAdminAuth(request, FULL_ACCESS);
+    const actor = await requireAdminAuth(request, FULL_ACCESS);
     const body = termsCreateSchema.parse(await request.json());
     const terms = await createTerms(body);
     recordAuditLog(actor, request, "CREATE", "terms", terms.id, { doc_type: body.doc_type });
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
 // GET /api/v1/terms/?skip=0&limit=100
 export async function GET(request: NextRequest) {
   try {
-    requireAdminAuth(request, FULL_ACCESS);
+    await requireAdminAuth(request, FULL_ACCESS);
     const { skip, limit } = listQuerySchema.parse(
       Object.fromEntries(request.nextUrl.searchParams),
     );

@@ -8,7 +8,7 @@ import { createBusSchema } from "@/modules/buses/validation";
 // POST /api/v1/buses
 export async function POST(request: NextRequest) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const body = createBusSchema.parse(await request.json());
     const bus = await createBus(body);
     recordAuditLog(actor, request, "CREATE", "bus", bus.id, { plate_number: body.plate_number });
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 // the source's unwrap_or_default()), but an auth failure still short-circuits.
 export async function GET(request: NextRequest) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    await requireAdminAuth(request, OPS_ROLES);
   } catch (error) {
     return busErrorResponse(error);
   }

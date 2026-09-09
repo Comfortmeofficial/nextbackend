@@ -11,7 +11,7 @@ import { deductWalletSchema } from "@/modules/wallet/validation";
 // this HTTP route; it's an admin/finance tool, not a customer-facing one.
 export async function POST(request: NextRequest) {
   try {
-    const actor = requireAdminAuth(request, FINANCE_ROLES);
+    const actor = await requireAdminAuth(request, FINANCE_ROLES);
     const body = deductWalletSchema.parse(await request.json());
     const tx = await deductWallet(body);
     recordAuditLog(actor, request, "UPDATE", "wallet", body.user_id, { direction: "deduct", ...body });

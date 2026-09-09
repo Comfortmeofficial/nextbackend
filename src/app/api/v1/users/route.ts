@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 // email, phone for every user); admin-only.
 export async function GET(request: NextRequest) {
   try {
-    requireAdminAuth(request, SUPPORT_ROLES);
+    await requireAdminAuth(request, SUPPORT_ROLES);
     const { skip, limit } = listQuerySchema.parse(
       Object.fromEntries(request.nextUrl.searchParams),
     );

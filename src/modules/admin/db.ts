@@ -53,6 +53,12 @@ export function ensureAdminSchema(): Promise<void> {
       ALTER TABLE admins ADD COLUMN IF NOT EXISTS next_of_kin_phone VARCHAR(20);
       ALTER TABLE admins ADD COLUMN IF NOT EXISTS next_of_kin_relationship VARCHAR(100);
 
+      -- Admin tokens are stateless 24h JWTs with no session store — "force
+      -- logout" is implemented by stamping this and having requireAdminAuth
+      -- (guard.ts) reject any already-issued token whose iat predates it,
+      -- which every admin request checks regardless of module.
+      ALTER TABLE admins ADD COLUMN IF NOT EXISTS tokens_invalidated_at TIMESTAMPTZ;
+
       -- One row per admin-triggered mutation across the whole platform, not
       -- just this database — actor_id/actor_email are captured from the
       -- token at write time rather than joined against the admins table on

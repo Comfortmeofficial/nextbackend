@@ -27,7 +27,7 @@ function parseRfc3339(value: string, field: string): Date {
 // POST /api/v1/rides
 export async function POST(request: NextRequest) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const input = rideInputSchema.parse(await request.json());
     const departureTime = parseRfc3339(input.departure_time, "departure_time");
     const arrivalTime = input.arrival_time ? parseRfc3339(input.arrival_time, "arrival_time") : null;

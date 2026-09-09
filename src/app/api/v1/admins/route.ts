@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
   const headerError = requireRequestId(request);
   if (headerError) return headerError;
   try {
-    const actor = requireAdminAuth(request, SUPER_ADMIN_ONLY);
+    const actor = await requireAdminAuth(request, SUPER_ADMIN_ONLY);
     const body = adminCreateSchema.parse(await request.json());
     const admin = await createAdmin(body);
     recordAuditLog(actor, request, "CREATE", "admin", admin.id, { email: admin.email, role: admin.role });
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   const headerError = requireRequestId(request);
   if (headerError) return headerError;
   try {
-    requireAdminAuth(request, FULL_ACCESS);
+    await requireAdminAuth(request, FULL_ACCESS);
     const { skip, limit } = listQuerySchema.parse(Object.fromEntries(request.nextUrl.searchParams));
     const admins = await listAdmins(skip, limit);
     return NextResponse.json(admins);

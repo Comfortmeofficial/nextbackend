@@ -11,7 +11,7 @@ import { fundWalletSchema } from "@/modules/wallet/validation";
 // route is an admin/finance tool.
 export async function POST(request: NextRequest) {
   try {
-    const actor = requireAdminAuth(request, FINANCE_ROLES);
+    const actor = await requireAdminAuth(request, FINANCE_ROLES);
     const body = fundWalletSchema.parse(await request.json());
     const tx = await fundWallet(body);
     recordAuditLog(actor, request, "UPDATE", "wallet", body.user_id, { direction: "fund", ...body });

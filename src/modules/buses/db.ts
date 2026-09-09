@@ -79,6 +79,11 @@ export function ensureBusesSchema(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_bus_documents_bus_id ON bus_documents (bus_id);
+
+      -- Same three categories as the driver_type field that used to exist on
+      -- drivers (intercity/intrastate/shuttle) — which route type a bus is
+      -- suited for, set at creation.
+      ALTER TABLE buses ADD COLUMN IF NOT EXISTS bus_type VARCHAR(50);
     `)
       .then(() => undefined)
       .catch((err) => {

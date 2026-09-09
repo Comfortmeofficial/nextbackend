@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
         throw new ApiError(403, "Not your rentals");
       }
     } else {
-      requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
+      await requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
     }
     const rentals = await listRentals(skip, limit, status, userId);
     return NextResponse.json(rentals);

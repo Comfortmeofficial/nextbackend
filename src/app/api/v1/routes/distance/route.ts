@@ -10,7 +10,7 @@ import { locationRepo, destinationRepo } from "@/modules/booking/repository/plac
 // (km) value instead of the admin having to already know/measure it.
 export async function GET(request: NextRequest) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    await requireAdminAuth(request, OPS_ROLES);
     const params = request.nextUrl.searchParams;
     const locationId = Number(params.get("location_id"));
     const destinationId = Number(params.get("destination_id"));

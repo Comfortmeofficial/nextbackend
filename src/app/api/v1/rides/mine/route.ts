@@ -6,7 +6,7 @@ import { listRidesByMarshal } from "@/modules/booking/repository/rides";
 // GET /api/v1/rides/mine — the calling marshal's own assigned trips.
 export async function GET(request: NextRequest) {
   try {
-    const claims = requireAdminAuth(request, MARSHAL_ROLES);
+    const claims = await requireAdminAuth(request, MARSHAL_ROLES);
     const rides = await listRidesByMarshal(Number(claims.sub));
     return NextResponse.json(rides);
   } catch (error) {

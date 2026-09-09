@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 // POST /api/v1/terms/{id}/publish
 export async function POST(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, FULL_ACCESS);
+    const actor = await requireAdminAuth(request, FULL_ACCESS);
     const id = idParamSchema.parse((await params).id);
     const terms = await publishTerms(id);
     recordAuditLog(actor, request, "APPROVE", "terms", id, { action: "publish" });

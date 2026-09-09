@@ -8,7 +8,7 @@ import { rideScheduleInputSchema } from "@/modules/booking/validation";
 // POST /api/v1/ride-schedules
 export async function POST(request: NextRequest) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const input = rideScheduleInputSchema.parse(await request.json());
     const schedule = await createRideSchedule(input);
     recordAuditLog(actor, request, "CREATE", "ride_schedule", schedule.id, input);

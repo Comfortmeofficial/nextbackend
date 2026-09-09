@@ -49,6 +49,8 @@ const seatLayoutSchema = z.object({
   blocks: z.array(seatBlockSchema).optional(),
 });
 
+export const busTypeSchema = z.enum(["intercity", "intrastate", "shuttle"]);
+
 // Matches CreateBusRequest
 export const createBusSchema = z.object({
   plate_number: z.string(),
@@ -57,6 +59,7 @@ export const createBusSchema = z.object({
   cols: z.number().int().nullable().optional(),
   capacity: z.number().int().nullable().optional(),
   layout: seatLayoutSchema.nullable().optional(),
+  bus_type: busTypeSchema.nullable().optional(),
 });
 export type CreateBusInput = z.infer<typeof createBusSchema>;
 
@@ -69,6 +72,7 @@ export const updateBusSchema = z.object({
   model: z.string().nullable().optional(),
   status: busStatusSchema.nullable().optional(),
   driver_id: z.number().int().nullable().optional(),
+  bus_type: busTypeSchema.nullable().optional(),
   layout: seatLayoutSchema.nullable().optional(),
   picture: z.string().nullable().optional(),
   insurance_document: z.string().nullable().optional(),

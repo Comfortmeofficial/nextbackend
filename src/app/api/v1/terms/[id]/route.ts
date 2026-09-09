@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 // GET /api/v1/terms/{id}
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, FULL_ACCESS);
+    await requireAdminAuth(request, FULL_ACCESS);
     const id = idParamSchema.parse((await params).id);
     const terms = await getTerms(id);
     return NextResponse.json(terms);
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 // PUT /api/v1/terms/{id}
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, FULL_ACCESS);
+    const actor = await requireAdminAuth(request, FULL_ACCESS);
     const id = idParamSchema.parse((await params).id);
     const body = termsUpdateSchema.parse(await request.json());
     const terms = await updateTerms(id, body);

@@ -8,7 +8,7 @@ import { listQuerySchema, routeInputSchema } from "@/modules/booking/validation"
 // POST /api/v1/routes
 export async function POST(request: NextRequest) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const body = routeInputSchema.parse(await request.json());
     const route = await createRoute(body);
     recordAuditLog(actor, request, "CREATE", "route", route.id, body);

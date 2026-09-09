@@ -9,7 +9,7 @@ type Params = { params: Promise<{ id: string }> };
 // Admin-only — no mobile package-detail screen exists today.
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
+    await requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const pkg = await getPackage(id);

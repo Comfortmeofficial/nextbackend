@@ -9,7 +9,7 @@ import { listAuditLogs } from "@/modules/admin/audit";
 // OPS_ROLES tier other resource lists use).
 export async function GET(request: NextRequest) {
   try {
-    requireAdminAuth(request, FULL_ACCESS);
+    await requireAdminAuth(request, FULL_ACCESS);
     const params = request.nextUrl.searchParams;
     const skip = Number(params.get("skip") ?? "0") || 0;
     const limit = Number(params.get("limit") ?? "20") || 20;

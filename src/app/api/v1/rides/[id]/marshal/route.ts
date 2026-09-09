@@ -13,7 +13,7 @@ type Params = { params: Promise<{ id: string }> };
 // null, unassign) the bus marshal conducting this trip.
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const { marshal_admin_id } = rideMarshalInputSchema.parse(await request.json());

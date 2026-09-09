@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { ApiError } from "@/lib/http-errors";
+import { ensureAdminSchema, getAdminPool } from "./db";
 import type { AdminTokenPayload } from "./jwt";
 import type { AdminRoleApi } from "./types";
 
@@ -23,10 +24,20 @@ const SECRET = process.env.ADMIN_JWT_SECRET || "change_me_in_production";
 // Throws ApiError (401 for missing/invalid token, 403 for a valid token
 // with the wrong role) — callers let handleRouteError() turn that into a
 // response, same pattern as booking/guard.ts's requireDriverAuth.
-export function requireAdminAuth(
+//
+// Admin tokens are stateless 24h JWTs — there's no session/refresh-token
+// store to revoke for a "force logout" (unlike customer auth's
+// refresh_tokens table). Instead, every verified token is checked against
+// admins.tokens_invalidated_at: if that's set and postdates the token's own
+// iat, the token was issued before the last force-logout and is rejected
+// even though its signature and expiry are still fine. This is why the
+// function is async and hits the DB on every single admin-gated request —
+// the real, necessary cost of making force-logout actually immediate rather
+// than "eventually, once the token expires on its own."
+export async function requireAdminAuth(
   request: NextRequest,
   allowedRoles?: AdminRoleApi[],
-): AdminTokenPayload {
+): Promise<AdminTokenPayload> {
   const header = request.headers.get("authorization") ?? "";
   if (!header.startsWith("Bearer ")) {
     throw new ApiError(401, "missing bearer token");
@@ -48,6 +59,16 @@ export function requireAdminAuth(
     throw new ApiError(403, "You don't have permission to perform this action");
   }
 
+  await ensureAdminSchema();
+  const { rows } = await getAdminPool().query<{ tokens_invalidated_at: Date | null }>(
+    "SELECT tokens_invalidated_at FROM admins WHERE id = $1",
+    [claims.sub],
+  );
+  const invalidatedAt = rows[0]?.tokens_invalidated_at;
+  if (invalidatedAt && (!claims.iat || invalidatedAt.getTime() > claims.iat * 1000)) {
+    throw new ApiError(401, "Session has been invalidated — please log in again");
+  }
+
   return claims;
 }
 
@@ -56,11 +77,11 @@ export function requireAdminAuth(
 // lets the ride-generation endpoint be triggered by an actual cron job AND
 // opportunistically from the Schedules admin page, without either path
 // needing its own separate endpoint.
-export function requireCronOrAdminAuth(request: NextRequest, allowedRoles?: AdminRoleApi[]): void {
+export async function requireCronOrAdminAuth(request: NextRequest, allowedRoles?: AdminRoleApi[]): Promise<void> {
   const header = request.headers.get("authorization") ?? "";
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && header === `Bearer ${cronSecret}`) return;
-  requireAdminAuth(request, allowedRoles);
+  await requireAdminAuth(request, allowedRoles);
 }
 
 // Reasonable first-pass role tiers — sketched, not yet confirmed against

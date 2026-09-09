@@ -11,7 +11,7 @@ type Params = { params: Promise<{ id: string }> };
 // POST /api/v1/buses/{id}/driver
 export async function POST(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const id = parseBusId((await params).id);
     const { driver_id } = assignDriverSchema.parse(await request.json());
     await assertDriverAssignable(driver_id);
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 // DELETE /api/v1/buses/{id}/driver
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const id = parseBusId((await params).id);
     const bus = await unassignDriver(id);
     recordAuditLog(actor, request, "UPDATE", "bus", id, { driver_id: null });

@@ -8,7 +8,7 @@ import { listQuerySchema, placeInputSchema } from "@/modules/booking/validation"
 // POST /api/v1/locations
 export async function POST(request: NextRequest) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const body = placeInputSchema.parse(await request.json());
     const loc = await locationRepo.create(body);
     recordAuditLog(actor, request, "CREATE", "location", loc.id, { name: body.name });

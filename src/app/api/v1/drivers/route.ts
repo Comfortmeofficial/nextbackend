@@ -9,7 +9,7 @@ import { listQuerySchema } from "@/lib/common-validation";
 // POST /api/v1/drivers/
 export async function POST(request: NextRequest) {
   try {
-    const actor = requireAdminAuth(request, OPS_ROLES);
+    const actor = await requireAdminAuth(request, OPS_ROLES);
     const body = driverCreateSchema.parse(await request.json());
     const driver = await createDriver(body);
     recordAuditLog(actor, request, "CREATE", "driver", driver.id, { email: driver.email });
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 // GET /api/v1/drivers/?skip=0&limit=100
 export async function GET(request: NextRequest) {
   try {
-    requireAdminAuth(request, OPS_ROLES);
+    await requireAdminAuth(request, OPS_ROLES);
     const { skip, limit } = listQuerySchema.parse(
       Object.fromEntries(request.nextUrl.searchParams),
     );
