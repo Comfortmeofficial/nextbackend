@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { fetchRouteETA } from "@/modules/booking/external";
-import { locationRepo } from "@/modules/booking/repository/places";
+import { ensurePlaceGeocoded, locationRepo } from "@/modules/booking/repository/places";
 
 // GET /api/v1/routes/distance?location_id=X&destination_id=Y — driving
 // distance between a pickup location and a destination, via Google
@@ -23,9 +23,16 @@ export async function GET(request: NextRequest) {
       throw new ApiError(400, "location_id and destination_id are required");
     }
 
-    const [location, destination] = await Promise.all([
+    const [locationRaw, destinationRaw] = await Promise.all([
       locationRepo.getById(locationId),
       locationRepo.getById(destinationId),
+    ]);
+    // Self-heal stale (0,0) coordinates before ever handing them to
+    // Directions — see ensurePlaceGeocoded's comment for why these can
+    // still be unset even with geocoding configured and working.
+    const [location, destination] = await Promise.all([
+      ensurePlaceGeocoded("locations", locationRaw),
+      ensurePlaceGeocoded("locations", destinationRaw),
     ]);
 
     try {

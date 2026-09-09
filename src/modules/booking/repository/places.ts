@@ -116,6 +116,30 @@ export const locationRepo = makePlaceRepo("locations", { geocode: true });
 export const destinationRepo = makePlaceRepo("destinations", { geocode: true });
 export const stopRepo = makePlaceRepo("stops");
 
+// Distance calculation needs real coordinates, but a place can still be
+// sitting at (0,0) — placeInputSchema defaults latitude/longitude to 0, and
+// create()'s own geocode-on-creation step silently gives up on failure (see
+// fetchGeocode's own comment), so any row created before GOOGLE_MAPS_API_KEY
+// was configured, or whose address didn't geocode at the time, is stuck
+// there. Rather than a one-off backfill migration, this heals a place's
+// coordinates the first time they're actually needed for a real distance
+// calculation: if they're still (0,0), geocode now and persist the result
+// so the fix sticks and future look-ups don't repeat the API call.
+export async function ensurePlaceGeocoded(kind: PlaceKind, place: PlaceDto): Promise<PlaceDto> {
+  if (place.latitude !== 0 || place.longitude !== 0) return place;
+  const address = place.state ? `${place.name}, ${place.state}` : place.name;
+  const geocoded = await fetchGeocode(address);
+  if (!geocoded) return place;
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  await pool.query(`UPDATE ${kind} SET latitude = $2, longitude = $3, updated_at = now() WHERE id = $1`, [
+    place.id,
+    geocoded.latitude,
+    geocoded.longitude,
+  ]);
+  return { ...place, latitude: geocoded.latitude, longitude: geocoded.longitude };
+}
+
 // The admin dashboard now manages exactly one place list — Locations — and
 // route creation just picks origin/destination/stops from it via search,
 // instead of separately maintaining Locations/Destinations/Stops. But
