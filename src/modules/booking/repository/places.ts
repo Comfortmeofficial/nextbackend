@@ -115,3 +115,42 @@ export function makePlaceRepo(kind: PlaceKind, options: { geocode?: boolean } = 
 export const locationRepo = makePlaceRepo("locations", { geocode: true });
 export const destinationRepo = makePlaceRepo("destinations", { geocode: true });
 export const stopRepo = makePlaceRepo("stops");
+
+// The admin dashboard now manages exactly one place list — Locations — and
+// route creation just picks origin/destination/stops from it via search,
+// instead of separately maintaining Locations/Destinations/Stops. But
+// routes.destination_id and route_stops.stop_id still reference the
+// destinations/stops tables directly (left in place rather than migrated,
+// since the customer mobile app's GET /api/v1/destinations and
+// GET /api/v1/stops read from them and must keep working unchanged). This
+// bridges the two: given a locations.id, finds the destinations/stops row
+// with the same name — creating a mirrored one on first use — and returns
+// its id, so an admin adds a place once and it's immediately usable in any
+// route role without re-entering it per table.
+export async function findOrCreatePlaceIdByLocation(
+  kind: "destinations" | "stops",
+  locationId: number,
+): Promise<number> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const { rows: locRows } = await pool.query<PlaceRow>(
+    `SELECT * FROM locations WHERE id = $1 AND deleted_at IS NULL`,
+    [locationId],
+  );
+  const location = locRows[0];
+  if (!location) {
+    throw new ApiError(404, "Location not found");
+  }
+  const { rows: existing } = await pool.query<{ id: number }>(
+    `SELECT id FROM ${kind} WHERE name = $1 AND deleted_at IS NULL`,
+    [location.name],
+  );
+  if (existing[0]) {
+    return existing[0].id;
+  }
+  const { rows: created } = await pool.query<{ id: number }>(
+    `INSERT INTO ${kind} (name, state, latitude, longitude) VALUES ($1, $2, $3, $4) RETURNING id`,
+    [location.name, location.state, location.latitude, location.longitude],
+  );
+  return created[0].id;
+}

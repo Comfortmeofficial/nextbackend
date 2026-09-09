@@ -21,9 +21,12 @@ function placeDto(row: PlaceRow) {
 
 async function toDto(row: RideScheduleRow): Promise<RideScheduleDto> {
   const pool = getBookingPool();
+  // Both location_id and destination_id on ride_schedules are locations.id
+  // — the admin form's route picker only ever sends ids from the unified
+  // Locations list (see createRoute's own comment on the same point).
   const [{ rows: locationRows }, { rows: destinationRows }] = await Promise.all([
     pool.query<PlaceRow>(`SELECT * FROM locations WHERE id = $1`, [row.location_id]),
-    pool.query<PlaceRow>(`SELECT * FROM destinations WHERE id = $1`, [row.destination_id]),
+    pool.query<PlaceRow>(`SELECT * FROM locations WHERE id = $1`, [row.destination_id]),
   ]);
   let busPlate: string | undefined;
   let driverName: string | undefined;

@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/http-errors";
 import { ensureBookingSchema, getBookingPool } from "../db";
+import { findOrCreatePlaceIdByLocation } from "./places";
 import type { PlaceRow, RouteDto, RouteRow, RouteStopDto } from "../types";
 import type { RouteInput } from "../validation";
 
@@ -89,21 +90,36 @@ async function loadFullRoute(id: number): Promise<RouteDto | null> {
 // underlying error at 500, not a friendly 409 — a real asymmetry in the
 // source (Routes.Create's caller uses StatusInternalServerError with
 // err.Error(), the other three use a fixed StatusConflict message).
+//
+// input.location_id, input.destination_id, and every input.stops[i].stop_id
+// are all locations.id now — the admin dashboard's single unified Locations
+// picker is the only source of place ids it ever sends. location_id is used
+// directly (routes.location_id already points at locations); destination_id
+// and each stop_id are resolved to their destinations/stops-table
+// counterpart first, via findOrCreatePlaceIdByLocation, before the insert —
+// see that function's comment for why those two tables still exist
+// separately. Resolution happens before the transaction starts since it
+// does its own reads/writes against different tables, not routes/route_stops.
 export async function createRoute(input: RouteInput): Promise<RouteDto> {
   await ensureBookingSchema();
+  const [destinationId, stopIds] = await Promise.all([
+    findOrCreatePlaceIdByLocation("destinations", input.destination_id),
+    Promise.all(input.stops.map((s) => findOrCreatePlaceIdByLocation("stops", s.stop_id))),
+  ]);
+
   const pool = getBookingPool();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const { rows } = await client.query<RouteRow>(
       `INSERT INTO routes (name, location_id, destination_id, distance) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [input.name, input.location_id, input.destination_id, input.distance_km],
+      [input.name, input.location_id, destinationId, input.distance_km],
     );
     const route = rows[0];
     for (let i = 0; i < input.stops.length; i++) {
       await client.query(
         `INSERT INTO route_stops (route_id, stop_id, stop_order, fare) VALUES ($1, $2, $3, $4)`,
-        [route.id, input.stops[i].stop_id, i + 1, input.stops[i].fare ?? null],
+        [route.id, stopIds[i], i + 1, input.stops[i].fare ?? null],
       );
     }
     await client.query("COMMIT");
