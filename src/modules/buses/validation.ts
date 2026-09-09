@@ -49,12 +49,16 @@ const seatLayoutSchema = z.object({
   blocks: z.array(seatBlockSchema).optional(),
 });
 
-export const busTypeSchema = z.enum(["intercity", "intrastate", "shuttle"]);
+// Free text now (was a fixed intercity/intrastate/shuttle enum) — the admin
+// form collects it as a plain input field instead of a dropdown.
+export const busTypeSchema = z.string();
 
-// Matches CreateBusRequest
+// Matches CreateBusRequest. model is optional — the create form no longer
+// collects it; createBus() defaults it to an empty string rather than the
+// DB column needing to allow NULL.
 export const createBusSchema = z.object({
   plate_number: z.string(),
-  model: z.string(),
+  model: z.string().nullable().optional(),
   rows: z.number().int().nullable().optional(),
   cols: z.number().int().nullable().optional(),
   capacity: z.number().int().nullable().optional(),

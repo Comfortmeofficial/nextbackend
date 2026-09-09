@@ -105,7 +105,7 @@ export async function createBus(input: CreateBusInput): Promise<BusDto> {
   try {
     const { rows } = await pool.query<BusRow>(
       `INSERT INTO buses (plate_number, capacity, model, layout, bus_type) VALUES ($1, $2, $3, $4, $5) RETURNING ${SELECT_COLUMNS}`,
-      [input.plate_number, capacity, input.model, JSON.stringify(layout), input.bus_type ?? null],
+      [input.plate_number, capacity, input.model ?? "", JSON.stringify(layout), input.bus_type ?? null],
     );
     return toDto(rows[0]);
   } catch {
