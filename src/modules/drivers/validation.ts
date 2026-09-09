@@ -2,7 +2,10 @@ import { z } from "zod";
 
 export { idParamSchema, listQuerySchema } from "@/lib/common-validation";
 
-const driverStatusSchema = z.enum(["available", "assigned", "on_trip", "offline", "on_leave", "suspended"]);
+// active = currently on a trip (set automatically by the ride lifecycle,
+// see setDriverTripStatus — not admin-settable); inactive = everything else
+// non-suspended; suspended = admin-only.
+const driverStatusSchema = z.enum(["active", "inactive", "suspended"]);
 
 // Matches schemas.DriverCreateSchema. No separate emergency_contact — the
 // next of kin doubles as the emergency contact, so we collect their name

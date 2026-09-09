@@ -1,3 +1,4 @@
+import { getAdmin } from "@/modules/admin/repository";
 import { BusError } from "./errors";
 import { ensureBusesSchema, getBusesPool } from "./db";
 import type { BusDto, BusRow, SeatLayout } from "./types";
@@ -24,7 +25,7 @@ function layoutCapacity(layout: SeatLayout): number {
   return layout.seats.filter((s) => s.is_seat).length;
 }
 
-function toDto(row: BusRow): BusDto {
+async function toDto(row: BusRow): Promise<BusDto> {
   return {
     id: row.id,
     plate_number: row.plate_number,
@@ -32,10 +33,30 @@ function toDto(row: BusRow): BusDto {
     model: row.model,
     status: row.status as BusDto["status"],
     driver_id: row.driver_id,
+    marshal_ids: await getMarshalIdsForBus(row.id),
     layout: row.layout,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
+}
+
+// Batched counterpart to toDto for list endpoints — avoids N+1 queries
+// against bus_marshals when rendering the full buses table.
+async function toDtoList(rows: BusRow[]): Promise<BusDto[]> {
+  if (rows.length === 0) return [];
+  const marshalIds = await getMarshalIdsForBuses(rows.map((r) => r.id));
+  return rows.map((row) => ({
+    id: row.id,
+    plate_number: row.plate_number,
+    capacity: row.capacity,
+    model: row.model,
+    status: row.status as BusDto["status"],
+    driver_id: row.driver_id,
+    marshal_ids: marshalIds.get(row.id) ?? [],
+    layout: row.layout,
+    created_at: row.created_at.toISOString(),
+    updated_at: row.updated_at.toISOString(),
+  }));
 }
 
 export async function createBus(input: CreateBusInput): Promise<BusDto> {
@@ -69,7 +90,7 @@ export async function listBuses(): Promise<BusDto[]> {
     const { rows } = await pool.query<BusRow>(
       `SELECT * FROM buses WHERE status != 'retired' ORDER BY id`,
     );
-    return rows.map(toDto);
+    return toDtoList(rows);
   } catch {
     // Mirrors the source: any query failure here silently returns an empty
     // list with a 200, not an error response.
@@ -186,6 +207,58 @@ export async function getBusIdsForDrivers(driverIds: number[]): Promise<Map<numb
     [driverIds],
   );
   return new Map(rows.map((r) => [r.driver_id, r.id]));
+}
+
+export async function getMarshalIdsForBus(busId: number): Promise<number[]> {
+  await ensureBusesSchema();
+  const pool = getBusesPool();
+  const { rows } = await pool.query<{ marshal_id: number }>(
+    `SELECT marshal_id FROM bus_marshals WHERE bus_id = $1 ORDER BY marshal_id`,
+    [busId],
+  );
+  return rows.map((r) => r.marshal_id);
+}
+
+async function getMarshalIdsForBuses(busIds: number[]): Promise<Map<number, number[]>> {
+  if (busIds.length === 0) return new Map();
+  await ensureBusesSchema();
+  const pool = getBusesPool();
+  const { rows } = await pool.query<{ bus_id: number; marshal_id: number }>(
+    `SELECT bus_id, marshal_id FROM bus_marshals WHERE bus_id = ANY($1) ORDER BY marshal_id`,
+    [busIds],
+  );
+  const map = new Map<number, number[]>();
+  for (const row of rows) {
+    const list = map.get(row.bus_id) ?? [];
+    list.push(row.marshal_id);
+    map.set(row.bus_id, list);
+  }
+  return map;
+}
+
+// Only an admin with the bus_marshal role can be assigned — prevents an
+// ops manager or finance officer ending up in this list by accident.
+export async function assignMarshalToBus(busId: number, marshalId: number): Promise<BusDto> {
+  await ensureBusesSchema();
+  const bus = await getBus(busId);
+  const marshal = await getAdmin(marshalId);
+  if (!marshal || marshal.role !== "bus_marshal") {
+    throw new BusError(400);
+  }
+  const pool = getBusesPool();
+  await pool.query(
+    `INSERT INTO bus_marshals (bus_id, marshal_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [busId, marshalId],
+  );
+  return { ...bus, marshal_ids: await getMarshalIdsForBus(busId) };
+}
+
+export async function unassignMarshalFromBus(busId: number, marshalId: number): Promise<BusDto> {
+  await ensureBusesSchema();
+  const bus = await getBus(busId);
+  const pool = getBusesPool();
+  await pool.query(`DELETE FROM bus_marshals WHERE bus_id = $1 AND marshal_id = $2`, [busId, marshalId]);
+  return { ...bus, marshal_ids: await getMarshalIdsForBus(busId) };
 }
 
 export async function getBusLayout(id: number): Promise<SeatLayout> {

@@ -44,8 +44,8 @@ export function ensureDriversSchema(): Promise<void> {
         license_expiry DATE,
         driver_type VARCHAR(50),
         password_hash VARCHAR(255) NOT NULL,
-        status VARCHAR(20) NOT NULL DEFAULT 'OFFLINE'
-          CHECK (status IN ('AVAILABLE', 'ASSIGNED', 'ON_TRIP', 'OFFLINE', 'ON_LEAVE', 'SUSPENDED')),
+        status VARCHAR(20) NOT NULL DEFAULT 'INACTIVE'
+          CHECK (status IN ('ACTIVE', 'INACTIVE', 'SUSPENDED')),
         verification_status VARCHAR(50) NOT NULL DEFAULT 'pending',
         is_active BOOLEAN NOT NULL DEFAULT true,
         rating NUMERIC(3, 2) NOT NULL DEFAULT 5.0,
@@ -63,6 +63,17 @@ export function ensureDriversSchema(): Promise<void> {
       -- collect the next of kin's own phone and relationship to the driver.
       ALTER TABLE drivers ADD COLUMN IF NOT EXISTS next_of_kin_phone VARCHAR(20);
       ALTER TABLE drivers ADD COLUMN IF NOT EXISTS next_of_kin_relationship VARCHAR(100);
+      -- Collapsed from six operational states (AVAILABLE/ASSIGNED/ON_TRIP/
+      -- OFFLINE/ON_LEAVE/SUSPENDED) down to three: ACTIVE (currently on a
+      -- trip), INACTIVE (everything else non-suspended), SUSPENDED
+      -- (unchanged). The old constraint must come off BEFORE backfilling —
+      -- it doesn't allow 'ACTIVE'/'INACTIVE' at all, so writing those values
+      -- while it's still in effect fails outright. All three statements are
+      -- no-ops once already migrated.
+      ALTER TABLE drivers DROP CONSTRAINT IF EXISTS drivers_status_check;
+      UPDATE drivers SET status = 'ACTIVE' WHERE status = 'ON_TRIP';
+      UPDATE drivers SET status = 'INACTIVE' WHERE status IN ('AVAILABLE', 'ASSIGNED', 'OFFLINE', 'ON_LEAVE');
+      ALTER TABLE drivers ADD CONSTRAINT drivers_status_check CHECK (status IN ('ACTIVE', 'INACTIVE', 'SUSPENDED'));
       CREATE INDEX IF NOT EXISTS idx_drivers_status ON drivers (status);
       CREATE INDEX IF NOT EXISTS idx_drivers_verification_status ON drivers (verification_status);
       CREATE INDEX IF NOT EXISTS idx_drivers_deleted_at ON drivers (deleted_at);

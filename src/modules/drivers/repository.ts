@@ -103,19 +103,19 @@ export async function setDriverTripStatus(
     const row = await findActiveById(driverId);
     if (!row) return;
     const current = toApiStatus(row.status);
-    // Never clobber an explicit unavailability the admin set deliberately.
-    if (current === "suspended" || current === "on_leave" || current === "offline") return;
+    // Never pull a suspended driver back to inactive/active off a ride event.
+    if (current === "suspended") return;
 
     const pool = getDriversPool();
     if (event === "on_trip") {
-      await pool.query(`UPDATE drivers SET status = 'ON_TRIP', updated_at = now() WHERE id = $1`, [driverId]);
+      await pool.query(`UPDATE drivers SET status = 'ACTIVE', updated_at = now() WHERE id = $1`, [driverId]);
     } else if (event === "completed") {
       await pool.query(
-        `UPDATE drivers SET status = 'AVAILABLE', total_trips = total_trips + 1, updated_at = now() WHERE id = $1`,
+        `UPDATE drivers SET status = 'INACTIVE', total_trips = total_trips + 1, updated_at = now() WHERE id = $1`,
         [driverId],
       );
     } else {
-      await pool.query(`UPDATE drivers SET status = 'AVAILABLE', updated_at = now() WHERE id = $1`, [driverId]);
+      await pool.query(`UPDATE drivers SET status = 'INACTIVE', updated_at = now() WHERE id = $1`, [driverId]);
     }
   } catch (err) {
     console.error(`setDriverTripStatus(${driverId}, ${event}) failed:`, err);
@@ -191,11 +191,14 @@ export async function listDrivers(skip: number, limit: number): Promise<DriverDt
   return toDtoList(rows);
 }
 
+// "Available" here just means eligible for a new assignment — matches
+// assertDriverAssignable's own rule (anything short of suspended), not the
+// old AVAILABLE-only state that no longer exists under the 3-state model.
 export async function listAvailableDrivers(): Promise<DriverDto[]> {
   await ensureDriversSchema();
   const pool = getDriversPool();
   const { rows } = await pool.query<DriverRow>(
-    `SELECT ${SELECT_COLUMNS} FROM drivers WHERE status = 'AVAILABLE' AND deleted_at IS NULL`,
+    `SELECT ${SELECT_COLUMNS} FROM drivers WHERE status != 'SUSPENDED' AND deleted_at IS NULL`,
   );
   return toDtoList(rows);
 }

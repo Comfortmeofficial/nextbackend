@@ -76,3 +76,7 @@ export type UpdateBusInput = z.infer<typeof updateBusSchema>;
 export const assignDriverSchema = z.object({
   driver_id: z.number().int(),
 });
+
+export const assignMarshalSchema = z.object({
+  marshal_id: z.number().int(),
+});

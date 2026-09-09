@@ -402,6 +402,19 @@ export async function listRidesByMarshal(marshalAdminId: number): Promise<RideDt
   return Promise.all(rows.map(loadRideForList));
 }
 
+// Trip history for a driver's profile — every ride they've ever been
+// assigned, newest first (unlike listRidesByMarshal's ascending order, which
+// is for an active marshal's upcoming shift, not a historical view).
+export async function listRidesByDriver(driverId: number): Promise<RideDto[]> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const { rows } = await pool.query<RideRow>(
+    `SELECT * FROM rides WHERE driver_id = $1 AND deleted_at IS NULL ORDER BY departure_time DESC`,
+    [driverId],
+  );
+  return Promise.all(rows.map(loadRideForList));
+}
+
 export async function setBoardingCode(id: number, code: string): Promise<void> {
   const pool = getBookingPool();
   await pool.query(`UPDATE rides SET boarding_code = $2, updated_at = now() WHERE id = $1`, [id, code]);

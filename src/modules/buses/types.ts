@@ -44,7 +44,9 @@ export interface BusRow {
 }
 
 // Matches the `Bus` struct's Serialize impl in main.rs — id/driver_id are
-// serialized as JSON numbers there (Rust i64) too.
+// serialized as JSON numbers there (Rust i64) too. marshal_ids has no
+// equivalent in that struct — it's new, sourced from the bus_marshals join
+// table rather than a column on this row.
 export interface BusDto {
   id: number;
   plate_number: string;
@@ -52,6 +54,7 @@ export interface BusDto {
   model: string;
   status: BusStatus;
   driver_id: number | null;
+  marshal_ids: number[];
   layout: SeatLayout;
   created_at: string;
   updated_at: string;

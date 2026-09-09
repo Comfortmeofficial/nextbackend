@@ -43,6 +43,20 @@ export function ensureBusesSchema(): Promise<void> {
       -- (max id/driver_id both single digits, nowhere near the int4 range).
       ALTER TABLE buses ALTER COLUMN id TYPE INTEGER USING id::integer;
       ALTER TABLE buses ALTER COLUMN driver_id TYPE INTEGER USING driver_id::integer;
+
+      -- A bus has at most one driver (buses.driver_id above), but any number
+      -- of marshals — a plain many-to-many join table, unlike the single
+      -- nullable driver_id column. marshal_id references admins.id (marshals
+      -- are just admin accounts with role = 'BUS_MARSHAL'); the composite
+      -- primary key both enforces "no duplicate assignment" and gives us the
+      -- per-bus lookup index for free.
+      CREATE TABLE IF NOT EXISTS bus_marshals (
+        bus_id INTEGER NOT NULL,
+        marshal_id INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (bus_id, marshal_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_bus_marshals_marshal_id ON bus_marshals (marshal_id);
     `)
       .then(() => undefined)
       .catch((err) => {

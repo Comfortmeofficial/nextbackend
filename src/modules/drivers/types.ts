@@ -1,5 +1,5 @@
-export type DriverStatusDb = "AVAILABLE" | "ASSIGNED" | "ON_TRIP" | "OFFLINE" | "ON_LEAVE" | "SUSPENDED";
-export type DriverStatusApi = "available" | "assigned" | "on_trip" | "offline" | "on_leave" | "suspended";
+export type DriverStatusDb = "ACTIVE" | "INACTIVE" | "SUSPENDED";
+export type DriverStatusApi = "active" | "inactive" | "suspended";
 
 export interface DriverRow {
   id: number;
