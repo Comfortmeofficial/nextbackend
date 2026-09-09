@@ -308,6 +308,35 @@ export async function getCurrentRideIdsForDrivers(driverIds: number[]): Promise<
   return new Map(rows.map((r) => [Number(r.driver_id), Number(r.id)]));
 }
 
+// Same "current ride" concept as getCurrentRideIdForDriver, scoped to the
+// marshal assigned to the ride instead of the driver — the Bus Marshals
+// page derives its "active" trip status from whether this returns non-null,
+// same as a driver's on_trip status, rather than storing a separate column.
+export async function getCurrentRideIdForMarshal(marshalAdminId: number): Promise<number | null> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT id FROM rides
+     WHERE marshal_admin_id = $1 AND status IN ('scheduled', 'boarding', 'active') AND deleted_at IS NULL
+     ORDER BY departure_time ASC LIMIT 1`,
+    [marshalAdminId],
+  );
+  return rows[0] ? Number(rows[0].id) : null;
+}
+
+export async function getCurrentRideIdsForMarshals(marshalAdminIds: number[]): Promise<Map<number, number>> {
+  if (marshalAdminIds.length === 0) return new Map();
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const { rows } = await pool.query<{ id: number; marshal_admin_id: number }>(
+    `SELECT DISTINCT ON (marshal_admin_id) marshal_admin_id, id FROM rides
+     WHERE marshal_admin_id = ANY($1) AND status IN ('scheduled', 'boarding', 'active') AND deleted_at IS NULL
+     ORDER BY marshal_admin_id, departure_time ASC`,
+    [marshalAdminIds],
+  );
+  return new Map(rows.map((r) => [Number(r.marshal_admin_id), Number(r.id)]));
+}
+
 export async function updateRideStatus(id: number, status: RideStatus): Promise<RideDto> {
   await ensureBookingSchema();
   const pool = getBookingPool();

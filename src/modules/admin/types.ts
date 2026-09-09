@@ -21,11 +21,17 @@ export interface AdminRow {
   password_hash: string;
   role: AdminRoleDb;
   is_active: boolean;
+  phone: string | null;
+  address: string | null;
+  next_of_kin: string | null;
+  next_of_kin_phone: string | null;
+  next_of_kin_relationship: string | null;
   created_at: Date;
   updated_at: Date;
 }
 
-// Matches schemas.AdminSchema
+// Matches schemas.AdminSchema, plus the contact/next-of-kin fields added for
+// the Bus Marshals page.
 export interface AdminDto {
   id: number;
   first_name: string;
@@ -33,6 +39,11 @@ export interface AdminDto {
   email: string;
   role: AdminRoleApi;
   is_active: boolean;
+  phone: string | null;
+  address: string | null;
+  next_of_kin: string | null;
+  next_of_kin_phone: string | null;
+  next_of_kin_relationship: string | null;
   created_at: string;
   updated_at: string;
 }

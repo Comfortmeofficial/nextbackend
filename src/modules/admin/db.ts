@@ -43,6 +43,16 @@ export function ensureAdminSchema(): Promise<void> {
       ALTER TABLE admins ADD CONSTRAINT admins_role_check
         CHECK (role IN ('SUPER_ADMIN', 'ADMIN', 'OPERATIONS_MANAGER', 'CUSTOMER_SUPPORT', 'FINANCE_OFFICER', 'BUS_MARSHAL'));
 
+      -- Added for the Bus Marshals profile page — same contact/next-of-kin
+      -- shape as drivers (minus anything license-related, which doesn't
+      -- apply to admin accounts). Generic to all admin roles rather than
+      -- marshal-specific columns; harmless and unused for the other roles.
+      ALTER TABLE admins ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
+      ALTER TABLE admins ADD COLUMN IF NOT EXISTS address VARCHAR(500);
+      ALTER TABLE admins ADD COLUMN IF NOT EXISTS next_of_kin VARCHAR(255);
+      ALTER TABLE admins ADD COLUMN IF NOT EXISTS next_of_kin_phone VARCHAR(20);
+      ALTER TABLE admins ADD COLUMN IF NOT EXISTS next_of_kin_relationship VARCHAR(100);
+
       -- One row per admin-triggered mutation across the whole platform, not
       -- just this database — actor_id/actor_email are captured from the
       -- token at write time rather than joined against the admins table on

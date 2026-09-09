@@ -20,6 +20,11 @@ export function toDto(row: AdminRow): AdminDto {
     email: row.email,
     role: toApiRole(row.role),
     is_active: row.is_active,
+    phone: row.phone,
+    address: row.address,
+    next_of_kin: row.next_of_kin,
+    next_of_kin_phone: row.next_of_kin_phone,
+    next_of_kin_relationship: row.next_of_kin_relationship,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -55,9 +60,22 @@ export async function createAdmin(input: AdminCreateInput): Promise<AdminDto> {
 
   const pool = getAdminPool();
   const { rows } = await pool.query<AdminRow>(
-    `INSERT INTO admins (first_name, last_name, email, password_hash, role)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [input.first_name, input.last_name, input.email, passwordHash, toDbRole(input.role)],
+    `INSERT INTO admins (
+       first_name, last_name, email, password_hash, role,
+       phone, address, next_of_kin, next_of_kin_phone, next_of_kin_relationship
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+    [
+      input.first_name,
+      input.last_name,
+      input.email,
+      passwordHash,
+      toDbRole(input.role),
+      input.phone ?? null,
+      input.address ?? null,
+      input.next_of_kin ?? null,
+      input.next_of_kin_phone ?? null,
+      input.next_of_kin_relationship ?? null,
+    ],
   );
   return toDto(rows[0]);
 }
@@ -77,14 +95,16 @@ export async function getAdmin(id: number): Promise<AdminDto | null> {
   return row ? toDto(row) : null;
 }
 
-// Lightweight roster for ride/marshal assignment UI — active bus_marshal
-// accounts only, not the full admin list (ops staff assigning marshals to
-// trips shouldn't need visibility into e.g. super_admin accounts).
+// Every bus_marshal account (active and suspended alike) — the Bus Marshals
+// management page needs to see suspended ones too, unlike the ride/bus
+// assignment dropdowns, which call this same list but filter to is_active
+// client-side themselves (mirroring how driver dropdowns filter out
+// suspended drivers from a broader "all drivers" list).
 export async function listMarshals(): Promise<AdminDto[]> {
   await ensureAdminSchema();
   const pool = getAdminPool();
   const { rows } = await pool.query<AdminRow>(
-    `SELECT * FROM admins WHERE deleted_at IS NULL AND is_active = true AND role = 'BUS_MARSHAL' ORDER BY first_name, last_name`,
+    `SELECT * FROM admins WHERE deleted_at IS NULL AND role = 'BUS_MARSHAL' ORDER BY first_name, last_name`,
   );
   return rows.map(toDto);
 }
@@ -102,6 +122,11 @@ export async function updateAdmin(id: number, input: AdminUpdateInput): Promise<
     email: input.email,
     role: input.role ? toDbRole(input.role) : null,
     is_active: input.is_active,
+    phone: input.phone,
+    address: input.address,
+    next_of_kin: input.next_of_kin,
+    next_of_kin_phone: input.next_of_kin_phone,
+    next_of_kin_relationship: input.next_of_kin_relationship,
   }).filter(([, value]) => value != null);
 
   if (entries.length === 0) {

@@ -236,13 +236,47 @@ async function getMarshalIdsForBuses(busIds: number[]): Promise<Map<number, numb
   return map;
 }
 
+// Reverse lookup of getMarshalIdsForBus — which bus(es) a given marshal is
+// on. Used by the Bus Marshals page (an "Assigned Bus" column, mirroring
+// drivers' single assigned_bus_id, except a marshal can be on more than one).
+export async function getBusIdsForMarshal(marshalId: number): Promise<number[]> {
+  await ensureBusesSchema();
+  const pool = getBusesPool();
+  const { rows } = await pool.query<{ bus_id: number }>(
+    `SELECT bus_id FROM bus_marshals WHERE marshal_id = $1 ORDER BY bus_id`,
+    [marshalId],
+  );
+  return rows.map((r) => r.bus_id);
+}
+
+export async function getBusIdsForMarshals(marshalIds: number[]): Promise<Map<number, number[]>> {
+  if (marshalIds.length === 0) return new Map();
+  await ensureBusesSchema();
+  const pool = getBusesPool();
+  const { rows } = await pool.query<{ bus_id: number; marshal_id: number }>(
+    `SELECT bus_id, marshal_id FROM bus_marshals WHERE marshal_id = ANY($1) ORDER BY bus_id`,
+    [marshalIds],
+  );
+  const map = new Map<number, number[]>();
+  for (const row of rows) {
+    const list = map.get(row.marshal_id) ?? [];
+    list.push(row.bus_id);
+    map.set(row.marshal_id, list);
+  }
+  return map;
+}
+
 // Only an admin with the bus_marshal role can be assigned — prevents an
-// ops manager or finance officer ending up in this list by accident.
+// ops manager or finance officer ending up in this list by accident. A
+// suspended marshal can't be assigned either, mirroring assertDriverAssignable.
 export async function assignMarshalToBus(busId: number, marshalId: number): Promise<BusDto> {
   await ensureBusesSchema();
   const bus = await getBus(busId);
   const marshal = await getAdmin(marshalId);
   if (!marshal || marshal.role !== "bus_marshal") {
+    throw new BusError(400);
+  }
+  if (!marshal.is_active) {
     throw new BusError(400);
   }
   const pool = getBusesPool();
