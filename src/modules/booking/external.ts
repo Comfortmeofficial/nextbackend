@@ -54,7 +54,7 @@ export async function fetchBusInfo(busId: number): Promise<BusInfo> {
     return {
       plateNumber: bus.plate_number,
       model: bus.model,
-      seats: bus.layout.seats,
+      seats: bus.layout?.seats ?? null,
     };
   } catch {
     throw new Error(`bus ${busId} not found`);

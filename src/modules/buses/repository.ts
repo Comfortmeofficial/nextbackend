@@ -22,8 +22,20 @@ function generateLayout(rows: number, cols: number): SeatLayout {
   return { rows, cols, seats };
 }
 
-function layoutCapacity(layout: SeatLayout): number {
-  return layout.seats.filter((s) => s.is_seat).length;
+function layoutCapacity(layout: SeatLayout | null | undefined): number {
+  return layout?.seats?.filter((s) => s.is_seat).length ?? 0;
+}
+
+// The layout column defaults to '{}' at the DB level (see db.ts) for any row
+// not written through createBus/updateBus below — a direct insert, a seed
+// script. That object is truthy but missing `seats`, which silently breaks
+// any consumer trusting the SeatLayout type at face value (both admin web
+// app pages that render bus.layout hit exactly this before being hardened
+// to check bus.layout?.seats?.length instead of just bus.layout). Collapsing
+// it to null here, at the read boundary, means every caller of toDto/
+// toDtoList/getBusLayout gets an honest "no layout" instead of a landmine.
+function normalizeLayout(layout: SeatLayout | null | undefined): SeatLayout | null {
+  return layout?.seats?.length ? layout : null;
 }
 
 // Explicit column list (rather than SELECT */RETURNING *) so the two new
@@ -56,7 +68,7 @@ async function toDto(row: BusRow): Promise<BusDto> {
     insurance_document: row.insurance_document,
     insurance_incorporation_date: row.insurance_incorporation_date,
     insurance_expiry_date: row.insurance_expiry_date,
-    layout: row.layout,
+    layout: normalizeLayout(row.layout),
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -85,7 +97,7 @@ async function toDtoList(rows: BusRow[]): Promise<BusDto[]> {
     insurance_document: row.insurance_document,
     insurance_incorporation_date: row.insurance_incorporation_date,
     insurance_expiry_date: row.insurance_expiry_date,
-    layout: row.layout,
+    layout: normalizeLayout(row.layout),
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   }));
@@ -347,7 +359,7 @@ export async function unassignMarshalFromBus(busId: number, marshalId: number): 
   return { ...bus, marshal_ids: await getMarshalIdsForBus(busId) };
 }
 
-export async function getBusLayout(id: number): Promise<SeatLayout> {
+export async function getBusLayout(id: number): Promise<SeatLayout | null> {
   await ensureBusesSchema();
   const pool = getBusesPool();
   let rows;
@@ -362,7 +374,7 @@ export async function getBusLayout(id: number): Promise<SeatLayout> {
   if (!rows[0]) {
     throw new BusError(404);
   }
-  return rows[0].layout;
+  return normalizeLayout(rows[0].layout);
 }
 
 export async function deleteBus(id: number): Promise<void> {

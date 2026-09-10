@@ -72,7 +72,7 @@ export interface BusDto {
   insurance_document: string | null;
   insurance_incorporation_date: string | null;
   insurance_expiry_date: string | null;
-  layout: SeatLayout;
+  layout: SeatLayout | null;
   created_at: string;
   updated_at: string;
 }

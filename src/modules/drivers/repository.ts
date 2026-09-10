@@ -203,6 +203,22 @@ export async function listAvailableDrivers(): Promise<DriverDto[]> {
   return toDtoList(rows);
 }
 
+// Distinct from listAvailableDrivers above: this is bus-assignment eligibility
+// specifically ("not currently on a bus"), not general assignability. Can't
+// filter in SQL on this table's own assigned_bus_id column — it's the legacy,
+// unmaintained one (see the note on toDto) — so we build DTOs first (which
+// derive assigned_bus_id from buses.driver_id, the real source of truth) and
+// filter on that.
+export async function listUnassignedDrivers(): Promise<DriverDto[]> {
+  await ensureDriversSchema();
+  const pool = getDriversPool();
+  const { rows } = await pool.query<DriverRow>(
+    `SELECT ${SELECT_COLUMNS} FROM drivers WHERE status != 'SUSPENDED' AND deleted_at IS NULL`,
+  );
+  const drivers = await toDtoList(rows);
+  return drivers.filter((d) => d.assigned_bus_id === null);
+}
+
 export async function getDriver(id: number): Promise<DriverDto> {
   const row = await findActiveById(id);
   if (!row) {

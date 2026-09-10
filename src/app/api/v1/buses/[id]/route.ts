@@ -29,7 +29,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const bus = await updateBus(id, body);
     if (body.layout) {
       try {
-        await resyncRideSeatsForBus(id, bus.layout.seats);
+        await resyncRideSeatsForBus(id, bus.layout?.seats ?? []);
       } catch {
         // Best-effort — a resync failure must never fail the layout save
         // itself; the bus's own layout is already committed at this point.
