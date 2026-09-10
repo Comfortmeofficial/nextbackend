@@ -13,7 +13,10 @@ export function getAdminPool(): Pool {
     if (!connectionString) {
       throw new Error("ADMIN_DATABASE_URL is not set");
     }
-    global.__adminPool = new Pool({ connectionString, max: 3 });
+    // connectionTimeoutMillis defaults to 0 (wait forever) in node-postgres —
+    // bounding it means a real network failure surfaces as a clear timeout
+    // error instead of an indefinitely hanging request.
+    global.__adminPool = new Pool({ connectionString, max: 3, connectionTimeoutMillis: 10_000 });
   }
   return global.__adminPool;
 }
