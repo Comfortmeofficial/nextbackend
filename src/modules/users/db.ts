@@ -45,7 +45,15 @@ export function ensureUsersSchema(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         deleted_at TIMESTAMPTZ
-      )
+      );
+
+      -- Same fix as admins/drivers/locations: plain UNIQUE constraints don't
+      -- exclude soft-deleted users, so deleting one and re-adding with the
+      -- same email/phone fails against the dead row's own constraint entry.
+      ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email_active ON users (email) WHERE deleted_at IS NULL;
+      ALTER TABLE users DROP CONSTRAINT IF EXISTS users_phone_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_users_phone_active ON users (phone) WHERE deleted_at IS NULL;
     `)
       .then(() => undefined)
       .catch((err) => {

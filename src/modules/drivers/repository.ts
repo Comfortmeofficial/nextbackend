@@ -157,27 +157,36 @@ export async function createDriver(input: DriverCreateInput): Promise<DriverDto>
   const passwordHash = await bcrypt.hash(tempPassword, 12);
 
   const pool = getDriversPool();
-  const { rows } = await pool.query<DriverRow>(
-    `INSERT INTO drivers (
-       first_name, last_name, email, phone, address,
-       next_of_kin, next_of_kin_phone, next_of_kin_relationship,
-       license_number, license_expiry, password_hash
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-     RETURNING ${SELECT_COLUMNS}`,
-    [
-      input.first_name,
-      input.last_name,
-      input.email,
-      input.phone,
-      input.address ?? null,
-      input.next_of_kin ?? null,
-      input.next_of_kin_phone ?? null,
-      input.next_of_kin_relationship ?? null,
-      input.license_number,
-      input.license_expiry ?? null,
-      passwordHash,
-    ],
-  );
+  let rows;
+  try {
+    ({ rows } = await pool.query<DriverRow>(
+      `INSERT INTO drivers (
+         first_name, last_name, email, phone, address,
+         next_of_kin, next_of_kin_phone, next_of_kin_relationship,
+         license_number, license_expiry, password_hash
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING ${SELECT_COLUMNS}`,
+      [
+        input.first_name,
+        input.last_name,
+        input.email,
+        input.phone,
+        input.address ?? null,
+        input.next_of_kin ?? null,
+        input.next_of_kin_phone ?? null,
+        input.next_of_kin_relationship ?? null,
+        input.license_number,
+        input.license_expiry ?? null,
+        passwordHash,
+      ],
+    ));
+  } catch {
+    // Same race as admins/users: the pre-check above and this insert aren't
+    // atomic, so a concurrent request (or a duplicate phone/license instead
+    // of email, which the pre-check doesn't even cover) can still hit the DB
+    // constraint here. Without this it surfaces as a bare 500.
+    throw new ApiError(409, "Driver with this email, phone, or license number already exists");
+  }
   return toDto(rows[0]);
 }
 

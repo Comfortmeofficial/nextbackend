@@ -83,6 +83,16 @@ export function ensureDriversSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_drivers_status ON drivers (status);
       CREATE INDEX IF NOT EXISTS idx_drivers_verification_status ON drivers (verification_status);
       CREATE INDEX IF NOT EXISTS idx_drivers_deleted_at ON drivers (deleted_at);
+
+      -- Same fix as admins/users/locations: plain UNIQUE constraints don't
+      -- exclude soft-deleted drivers, so deleting one and re-adding with the
+      -- same email/phone/license fails against the dead row's own entry.
+      ALTER TABLE drivers DROP CONSTRAINT IF EXISTS drivers_email_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_drivers_email_active ON drivers (email) WHERE deleted_at IS NULL;
+      ALTER TABLE drivers DROP CONSTRAINT IF EXISTS drivers_phone_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_drivers_phone_active ON drivers (phone) WHERE deleted_at IS NULL;
+      ALTER TABLE drivers DROP CONSTRAINT IF EXISTS drivers_license_number_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_drivers_license_number_active ON drivers (license_number) WHERE deleted_at IS NULL;
     `)
       .then(() => undefined)
       .catch((err) => {

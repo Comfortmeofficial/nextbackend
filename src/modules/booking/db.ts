@@ -298,6 +298,18 @@ export function ensureBookingSchema(): Promise<void> {
       ALTER TABLE route_stops VALIDATE CONSTRAINT fk_route_stops_stop_id;
       ALTER TABLE packages VALIDATE CONSTRAINT fk_packages_ride_id;
       ALTER TABLE ride_seats VALIDATE CONSTRAINT fk_ride_seats_ride_id;
+
+      -- The plain UNIQUE on name didn't exclude soft-deleted rows, so
+      -- deleting a location/destination/stop and re-adding one with the
+      -- same name hit the dead row's own constraint entry and failed as
+      -- "already exists" (places.ts's create() catch-all). A partial unique
+      -- index scoped to non-deleted rows fixes it at the source.
+      ALTER TABLE locations DROP CONSTRAINT IF EXISTS locations_name_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_locations_name_active ON locations (name) WHERE deleted_at IS NULL;
+      ALTER TABLE destinations DROP CONSTRAINT IF EXISTS destinations_name_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_destinations_name_active ON destinations (name) WHERE deleted_at IS NULL;
+      ALTER TABLE stops DROP CONSTRAINT IF EXISTS stops_name_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_stops_name_active ON stops (name) WHERE deleted_at IS NULL;
     `)
       .then(() => undefined)
       .catch((err) => {

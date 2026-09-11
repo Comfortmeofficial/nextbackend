@@ -59,24 +59,33 @@ export async function createAdmin(input: AdminCreateInput): Promise<AdminDto> {
   const passwordHash = await bcrypt.hash(input.password, 12);
 
   const pool = getAdminPool();
-  const { rows } = await pool.query<AdminRow>(
-    `INSERT INTO admins (
-       first_name, last_name, email, password_hash, role,
-       phone, address, next_of_kin, next_of_kin_phone, next_of_kin_relationship
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-    [
-      input.first_name,
-      input.last_name,
-      input.email,
-      passwordHash,
-      toDbRole(input.role),
-      input.phone ?? null,
-      input.address ?? null,
-      input.next_of_kin ?? null,
-      input.next_of_kin_phone ?? null,
-      input.next_of_kin_relationship ?? null,
-    ],
-  );
+  let rows;
+  try {
+    ({ rows } = await pool.query<AdminRow>(
+      `INSERT INTO admins (
+         first_name, last_name, email, password_hash, role,
+         phone, address, next_of_kin, next_of_kin_phone, next_of_kin_relationship
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [
+        input.first_name,
+        input.last_name,
+        input.email,
+        passwordHash,
+        toDbRole(input.role),
+        input.phone ?? null,
+        input.address ?? null,
+        input.next_of_kin ?? null,
+        input.next_of_kin_phone ?? null,
+        input.next_of_kin_relationship ?? null,
+      ],
+    ));
+  } catch {
+    // The pre-check above and this insert aren't atomic — a concurrent
+    // request for the same email can still slip past it and hit the DB
+    // constraint here. Without this, that surfaces as a bare 500 instead
+    // of the same 409 the pre-check gives for the non-racy case.
+    throw new ApiError(409, "Admin with this email already exists");
+  }
   return toDto(rows[0]);
 }
 

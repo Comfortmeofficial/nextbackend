@@ -62,6 +62,12 @@ export function ensureAdminSchema(): Promise<void> {
       -- which every admin request checks regardless of module.
       ALTER TABLE admins ADD COLUMN IF NOT EXISTS tokens_invalidated_at TIMESTAMPTZ;
 
+      -- Same fix as drivers/users/locations: the plain UNIQUE on email
+      -- doesn't exclude soft-deleted admins, so deleting one and re-adding
+      -- with the same email fails against the dead row's own constraint.
+      ALTER TABLE admins DROP CONSTRAINT IF EXISTS admins_email_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_admins_email_active ON admins (email) WHERE deleted_at IS NULL;
+
       -- One row per admin-triggered mutation across the whole platform, not
       -- just this database — actor_id/actor_email are captured from the
       -- token at write time rather than joined against the admins table on

@@ -64,27 +64,36 @@ export async function createUser(input: UserCreateInput): Promise<UserDto> {
   // via Python's secrets.token_hex(32); this is the same 32-random-bytes-as-hex shape.
   const placeholderPasswordHash = randomBytes(32).toString("hex");
 
-  const { rows } = await pool.query<UserRow>(
-    `INSERT INTO users (
-       first_name, last_name, email, phone, password_hash,
-       city, state, referral_code,
-       emergency_contact_name, emergency_contact_phone, emergency_contact_relationship
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-     RETURNING *`,
-    [
-      input.first_name,
-      input.last_name,
-      email,
-      input.phone ?? null,
-      placeholderPasswordHash,
-      input.city ?? null,
-      input.state ?? null,
-      input.referral_code ?? null,
-      input.emergency_contact_name ?? null,
-      input.emergency_contact_phone ?? null,
-      input.emergency_contact_relationship ?? null,
-    ],
-  );
+  let rows;
+  try {
+    ({ rows } = await pool.query<UserRow>(
+      `INSERT INTO users (
+         first_name, last_name, email, phone, password_hash,
+         city, state, referral_code,
+         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING *`,
+      [
+        input.first_name,
+        input.last_name,
+        email,
+        input.phone ?? null,
+        placeholderPasswordHash,
+        input.city ?? null,
+        input.state ?? null,
+        input.referral_code ?? null,
+        input.emergency_contact_name ?? null,
+        input.emergency_contact_phone ?? null,
+        input.emergency_contact_relationship ?? null,
+      ],
+    ));
+  } catch {
+    // Same race as admins/drivers: the pre-checks above and this insert
+    // aren't atomic, so a concurrent request for the same email/phone can
+    // still hit the DB constraint here. Without this it surfaces as a bare
+    // 500 instead of the same 409 the pre-checks give for the non-racy case.
+    throw new ApiError(409, "User with this email or phone number already exists");
+  }
   return toDto(rows[0]);
 }
 
