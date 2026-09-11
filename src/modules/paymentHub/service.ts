@@ -325,6 +325,7 @@ export async function payBooking(data: PayBookingRequestInput) {
       await fundWallet({
         user_id: data.user_id,
         amount: finalAmount,
+        type: "refund",
         description: "Refund: seats unavailable after card payment",
         reference,
       });
@@ -422,6 +423,7 @@ export async function cancelBookingHub(bookingId: number, requestingUserId: numb
     await fundWallet({
       user_id: booking.user_id,
       amount: refundAmount,
+      type: "refund",
       description: `Refund for cancelled booking #${bookingId} (10% cancellation fee deducted)`,
       reference,
     });
@@ -500,6 +502,7 @@ export async function payPackage(data: PayPackageRequestInput) {
       await fundWallet({
         user_id: data.sender_user_id,
         amount: data.amount,
+        type: "refund",
         description: "Refund: could not register package",
         reference,
       });
@@ -527,6 +530,7 @@ export async function payPackage(data: PayPackageRequestInput) {
       await fundWallet({
         user_id: data.sender_user_id,
         amount: data.amount,
+        type: "refund",
         description: "Refund: could not register package after card payment",
         reference,
       });
@@ -831,6 +835,7 @@ export async function verifyPaymentHub(reference: string, requestingUserId: numb
             await fundWallet({
               user_id: userId,
               amount: result.amount,
+              type: "refund",
               description: "Refund: seats unavailable after card payment",
               reference,
             });
@@ -864,6 +869,7 @@ export async function verifyPaymentHub(reference: string, requestingUserId: numb
             await fundWallet({
               user_id: senderUserId,
               amount: result.amount,
+              type: "refund",
               description: "Refund: could not register package after card payment",
               reference,
             });

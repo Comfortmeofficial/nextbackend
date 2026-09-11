@@ -103,7 +103,13 @@ export async function fundWallet(input: FundWalletInput): Promise<TransactionDto
   }
   const wallet = await getOrCreateWallet(input.user_id);
   await adjustBalance(wallet.id, input.amount);
-  return insertTransaction(wallet.id, "deposit", input.amount, input.description, input.reference ?? null);
+  return insertTransaction(
+    wallet.id,
+    input.type ?? "deposit",
+    input.amount,
+    input.description ?? "Wallet funding",
+    input.reference ?? null,
+  );
 }
 
 export async function deductWallet(input: DeductWalletInput): Promise<TransactionDto> {

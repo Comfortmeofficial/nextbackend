@@ -4,14 +4,23 @@ export { idParamSchema } from "@/lib/common-validation";
 
 const transactionTypeSchema = z.enum(["deposit", "withdrawal", "trip_fare", "refund"]);
 
-// Matches schemas.FundWalletSchema
+// Matches schemas.FundWalletSchema, plus an optional `type` (additive — every
+// existing caller omits it and still gets the original "deposit" behavior).
+// Lets internal credit paths that aren't a real top-up — refunds, currently —
+// tag the resulting transaction correctly instead of it defaulting to deposit.
 export const fundWalletSchema = z.object({
   user_id: z.number().int(),
   amount: z.number(),
+  type: transactionTypeSchema.default("deposit"),
   description: z.string().default("Wallet funding"),
   reference: z.string().nullable().optional(),
 });
-export type FundWalletInput = z.infer<typeof fundWalletSchema>;
+// z.input, not z.infer: fundWallet() is called both from the validated HTTP
+// boundary (already-parsed, `type` always present) and directly in-process
+// by other modules building a plain object literal (paymentHub's refund/
+// deposit/referral call sites) — those never ran through .parse(), so `type`
+// needs to stay optional on the type used for the function's own parameter.
+export type FundWalletInput = z.input<typeof fundWalletSchema>;
 
 // Matches schemas.DeductWalletSchema
 export const deductWalletSchema = z.object({
