@@ -109,12 +109,38 @@ export async function attachPaymentBooking(reference: string, bookingId: number)
   ]);
 }
 
-export async function listPayments(skip: number, limit: number): Promise<PaymentDto[]> {
+export interface ListPaymentsFilters {
+  status?: PaymentDto["status"];
+  purpose?: PaymentPurpose;
+  payment_method?: PaymentMethod;
+  from?: string; // ISO date, inclusive
+  to?: string; // ISO date, inclusive
+}
+
+export async function listPayments(
+  skip: number,
+  limit: number,
+  filters: ListPaymentsFilters = {},
+): Promise<PaymentDto[]> {
   await ensurePaymentsSchema();
   const pool = getPaymentsPool();
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  const push = (value: unknown) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+  if (filters.status) conditions.push(`status = ${push(filters.status.toUpperCase())}`);
+  if (filters.purpose) conditions.push(`purpose = ${push(filters.purpose.toUpperCase())}`);
+  if (filters.payment_method) conditions.push(`payment_method = ${push(filters.payment_method.toUpperCase())}`);
+  if (filters.from) conditions.push(`initiated_at >= ${push(filters.from)}`);
+  if (filters.to) conditions.push(`initiated_at < (${push(filters.to)}::date + interval '1 day')`);
+
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const { rows } = await pool.query<PaymentRow>(
-    `SELECT * FROM payments ORDER BY initiated_at DESC OFFSET $1 LIMIT $2`,
-    [skip, limit],
+    `SELECT * FROM payments ${where} ORDER BY initiated_at DESC OFFSET ${push(skip)} LIMIT ${push(limit)}`,
+    params,
   );
   return rows.map(toDto);
 }
