@@ -77,13 +77,18 @@ export async function initializePayment(input: {
   };
 }
 
-interface PaystackVerifyData {
+// Shape shared by both the verify/charge REST responses and a webhook
+// event's `data` object — Paystack uses the same transaction representation
+// in both places, which is what lets the webhook reuse toVerifyResult below
+// instead of needing its own separate mapping.
+export interface PaystackVerifyData {
   reference: string;
   amount: number;
   currency?: string;
   status: string;
   paid_at?: string | null;
   channel?: string | null;
+  gateway_response?: string | null;
   customer?: { email?: string | null };
   authorization?: {
     authorization_code?: string | null;
@@ -96,7 +101,7 @@ interface PaystackVerifyData {
   metadata?: Record<string, unknown> | null;
 }
 
-function toVerifyResult(data: PaystackVerifyData): VerifyPaymentResult {
+export function toVerifyResult(data: PaystackVerifyData): VerifyPaymentResult {
   const auth = data.authorization ?? {};
   const customer = data.customer ?? {};
   return {
@@ -114,6 +119,7 @@ function toVerifyResult(data: PaystackVerifyData): VerifyPaymentResult {
     exp_month: auth.exp_month ?? null,
     exp_year: auth.exp_year ?? null,
     metadata: data.metadata ?? null,
+    gateway_response: data.gateway_response ?? null,
   };
 }
 

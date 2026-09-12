@@ -368,3 +368,29 @@ export async function joinWaitlist(data: WaitlistInput) {
 
   return { id: res.rows[0].id, email };
 }
+
+export interface WaitlistEntryDto {
+  id: number;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  city: string | null;
+  occupation: string | null;
+  commute_days: string | null;
+  challenge: string | null;
+  preference: string | null;
+  created_at: string;
+}
+
+export async function listWaitlist(skip: number, limit: number): Promise<WaitlistEntryDto[]> {
+  await ensureAuthSchema();
+  const res = await query(
+    `SELECT id, full_name, email, phone, city, occupation, commute_days, challenge, preference, created_at
+     FROM waitlist_entries ORDER BY created_at DESC OFFSET $1 LIMIT $2`,
+    [skip, limit],
+  );
+  return res.rows.map((row) => ({
+    ...row,
+    created_at: row.created_at.toISOString(),
+  }));
+}

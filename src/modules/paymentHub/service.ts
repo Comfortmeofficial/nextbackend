@@ -27,6 +27,14 @@ import {
   initializePayment,
   verifyPayment as verifyPaystackPayment,
 } from "@/modules/payments/paystack";
+import {
+  attachPaymentBooking,
+  createPayment,
+  getPaymentByReference,
+  markPaymentFailed,
+  markPaymentSuccessful,
+} from "@/modules/payments/repository";
+import type { VerifyPaymentResult } from "@/modules/payments/types";
 import { deductWallet, fundWallet, verifyPin } from "@/modules/wallet/repository";
 import {
   cancelBooking as cancelBookingRecord,
@@ -140,6 +148,14 @@ export async function fundWalletHub(data: FundWalletRequestInput) {
     throw new ApiError(400, "Cannot fund wallet using wallet");
   }
 
+  await createPayment({
+    reference,
+    user_id: data.user_id,
+    amount: data.amount,
+    purpose: "wallet_funding",
+    payment_method: data.payment_method,
+  });
+
   if (data.payment_method === "debit_card" && data.authorization_code) {
     // Charge saved card
     try {
@@ -150,12 +166,16 @@ export async function fundWalletHub(data: FundWalletRequestInput) {
         reference,
       });
       if (result.status !== "success" && result.status !== "successful") {
+        await markPaymentFailed(reference, result.gateway_response ?? "Card charge failed");
         throw new ApiError(402, "Card charge failed");
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 402) throw err;
+      await markPaymentFailed(reference, errMessage(err));
       throw new ApiError(402, errMessage(err));
     }
+
+    await markPaymentSuccessful(reference);
 
     // Credit wallet
     await fundWallet({
@@ -202,6 +222,7 @@ export async function fundWalletHub(data: FundWalletRequestInput) {
       reference: result.reference,
     };
   } catch (err) {
+    await markPaymentFailed(reference, errMessage(err));
     throw new ApiError(400, errMessage(err));
   }
 }
@@ -303,6 +324,14 @@ export async function payBooking(data: PayBookingRequestInput) {
     }
   } else if (data.payment_method === "debit_card" && data.authorization_code) {
     // Saved card — charge immediately, then reserve seats atomically.
+    await createPayment({
+      reference,
+      user_id: data.user_id,
+      amount: finalAmount,
+      purpose: "booking_payment",
+      payment_method: "debit_card",
+    });
+
     try {
       const result = await chargeAuthorization({
         authorization_code: data.authorization_code,
@@ -311,15 +340,23 @@ export async function payBooking(data: PayBookingRequestInput) {
         reference,
       });
       if (result.status !== "success" && result.status !== "successful") {
+        await markPaymentFailed(reference, result.gateway_response ?? "Card charge failed");
         throw new ApiError(402, "Card charge failed");
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 402) throw err;
+      await markPaymentFailed(reference, errMessage(err));
       throw new ApiError(402, errMessage(err));
     }
 
+    // Paystack has now actually been paid, independent of whether a booking
+    // ends up existing — see attachPaymentBooking below for why booking_id
+    // is attached separately rather than passed to markPaymentSuccessful.
+    await markPaymentSuccessful(reference);
+
     try {
       bookings = await createBookingsBulk(seatInputsFor("debit_card"));
+      await attachPaymentBooking(reference, bookings[0].id);
     } catch {
       // Charge already succeeded — refund to wallet since seats couldn't be secured.
       await fundWallet({
@@ -335,6 +372,13 @@ export async function payBooking(data: PayBookingRequestInput) {
     // New card or bank transfer — both go through Paystack's hosted
     // checkout (bank transfer has no "saved authorization" concept, so it
     // always takes this path); booking is created once payment verifies.
+    await createPayment({
+      reference,
+      user_id: data.user_id,
+      amount: finalAmount,
+      purpose: "booking_payment",
+      payment_method: data.payment_method,
+    });
     try {
       const result = await initializePayment({
         amount: finalAmount,
@@ -358,6 +402,7 @@ export async function payBooking(data: PayBookingRequestInput) {
         reference: result.reference,
       };
     } catch (err) {
+      await markPaymentFailed(reference, errMessage(err));
       throw new ApiError(400, errMessage(err));
     }
   } else {
@@ -509,6 +554,14 @@ export async function payPackage(data: PayPackageRequestInput) {
       throw new ApiError(400, `Could not register package, amount refunded: ${errMessage(err)}`);
     }
   } else if (data.payment_method === "debit_card" && data.authorization_code) {
+    await createPayment({
+      reference,
+      user_id: data.sender_user_id,
+      amount: data.amount,
+      purpose: "package_payment",
+      payment_method: "debit_card",
+    });
+
     try {
       const result = await chargeAuthorization({
         authorization_code: data.authorization_code,
@@ -517,12 +570,16 @@ export async function payPackage(data: PayPackageRequestInput) {
         reference,
       });
       if (result.status !== "success" && result.status !== "successful") {
+        await markPaymentFailed(reference, result.gateway_response ?? "Card charge failed");
         throw new ApiError(402, "Card charge failed");
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 402) throw err;
+      await markPaymentFailed(reference, errMessage(err));
       throw new ApiError(402, errMessage(err));
     }
+
+    await markPaymentSuccessful(reference);
 
     try {
       pkg = await createPackage(packagePayload);
@@ -538,6 +595,13 @@ export async function payPackage(data: PayPackageRequestInput) {
     }
   } else if (data.payment_method === "debit_card") {
     // New card — Paystack checkout; package is created once payment verifies.
+    await createPayment({
+      reference,
+      user_id: data.sender_user_id,
+      amount: data.amount,
+      purpose: "package_payment",
+      payment_method: "debit_card",
+    });
     try {
       const result = await initializePayment({
         amount: data.amount,
@@ -553,6 +617,7 @@ export async function payPackage(data: PayPackageRequestInput) {
         reference: result.reference,
       };
     } catch (err) {
+      await markPaymentFailed(reference, errMessage(err));
       throw new ApiError(400, errMessage(err));
     }
   } else {
@@ -684,6 +749,13 @@ export async function payRental(data: PayRentalRequestInput) {
 
   // card / bank_transfer — Paystack checkout; rental is confirmed once payment verifies
   const reference = randomUUID();
+  await createPayment({
+    reference,
+    user_id: data.user_id,
+    amount,
+    purpose: "rental_payment",
+    payment_method: data.payment_method,
+  });
   try {
     const result = await initializePayment({
       amount,
@@ -704,35 +776,48 @@ export async function payRental(data: PayRentalRequestInput) {
       reference: result.reference,
     };
   } catch (err) {
+    await markPaymentFailed(reference, errMessage(err));
     throw new ApiError(400, errMessage(err));
   }
 }
 
 // ---------- verify ----------
+
+// Shared between the client-triggered verify endpoint (verifyPaymentHub,
+// below) and the Paystack webhook — "what a payment confirmation actually
+// does" needs exactly one implementation, not two that can silently drift.
+// Ownership (does this payment belong to the caller) is checked by
+// verifyPaymentHub before calling this; the webhook has no "caller" to check
+// against — it's already authenticated by its HMAC signature instead.
 //
-// The source wraps this ENTIRE function body — including the inner
-// try/except blocks for the booking_payment and package_payment branches,
-// which raise their own 409/400 HTTPExceptions — in one outer
-// `except Exception`. Since Python's bare except catches HTTPException too
-// (there's no more specific `except HTTPException` clause ahead of it),
-// every inner exception gets re-caught and re-raised as a flat 400. This
-// function replicates that: nothing internal ever surfaces as 409, only
-// ever 200 or 400, no matter what "logically" happens inside.
+// Idempotent by construction: if the payments row for this reference is no
+// longer PENDING — the webhook and the client's own verify call can both
+// reach here for the same payment, in either order — none of the side
+// effects below run again, which matters beyond just the DB row: it also
+// stops a booking/package being created twice or a notification being
+// re-sent for a payment that's already been fully handled.
+export async function processPaymentResult(
+  reference: string,
+  result: VerifyPaymentResult,
+): Promise<Record<string, unknown>> {
+  const metadata = (result.metadata ?? {}) as Record<string, unknown>;
+  const response: Record<string, unknown> = { ...result };
 
-export async function verifyPaymentHub(reference: string, requestingUserId: number) {
-  try {
-    const result = await verifyPaystackPayment(reference);
-    const metadata = (result.metadata ?? {}) as Record<string, unknown>;
-    const metadataUserId = metadata.user_id as number | undefined;
-    if (metadataUserId !== undefined && metadataUserId !== requestingUserId) {
-      throw new OwnershipError("Not your payment");
-    }
-    const response: Record<string, unknown> = { ...result };
+  const payment = await getPaymentByReference(reference);
+  if (payment && payment.status !== "pending") {
+    return { ...response, already_processed: true };
+  }
 
-    if (result.status === "success") {
-      const purpose = metadata.purpose;
+  if (result.status === "success") {
+    // Marked successful up front, before any purpose-specific business step
+    // — this reflects whether Paystack was actually paid, independent of
+    // whatever happens next (a booking/package can still fail to be created
+    // afterward and get refunded; the payment itself still succeeded).
+    await markPaymentSuccessful(reference);
 
-      if (purpose === "wallet_funding") {
+    const purpose = metadata.purpose;
+
+    if (purpose === "wallet_funding") {
         const userId = metadata.user_id as number | undefined;
         if (userId) {
           await fundWallet({
@@ -818,6 +903,7 @@ export async function verifyPaymentHub(reference: string, requestingUserId: numb
             ),
           );
           response.booking_id = bookings[0].id;
+          await attachPaymentBooking(reference, bookings[0].id);
           const contact = await notificationContact(userId);
           await sendBookingNotification({
             user_id: userId,
@@ -877,13 +963,38 @@ export async function verifyPaymentHub(reference: string, requestingUserId: numb
           throw new ApiError(400, "Could not register package — amount refunded to your wallet");
         }
       }
+    } else {
+      await markPaymentFailed(reference, result.gateway_response ?? null);
     }
 
-    return response;
+  return response;
+}
+
+
+
+// The source wraps this ENTIRE function body — including the inner
+// try/except blocks for the booking_payment and package_payment branches,
+// which raise their own 409/400 HTTPExceptions — in one outer
+// `except Exception`. Since Python's bare except catches HTTPException too
+// (there's no more specific `except HTTPException` clause ahead of it),
+// every inner exception gets re-caught and re-raised as a flat 400. This
+// function replicates that: nothing internal ever surfaces as 409, only
+// ever 200 or 400, no matter what "logically" happens inside
+// processPaymentResult. The webhook (which also calls processPaymentResult)
+// does NOT flatten the same way — see its own comment for why.
+export async function verifyPaymentHub(reference: string, requestingUserId: number) {
+  try {
+    const result = await verifyPaystackPayment(reference);
+    const metadata = (result.metadata ?? {}) as Record<string, unknown>;
+    const metadataUserId = metadata.user_id as number | undefined;
+    if (metadataUserId !== undefined && metadataUserId !== requestingUserId) {
+      throw new OwnershipError("Not your payment");
+    }
+    return await processPaymentResult(reference, result);
   } catch (err) {
     if (err instanceof OwnershipError) throw err;
     // Flattens ANY other inner error (including the 409/400 ApiErrors
-    // thrown above) to a 400 — see the comment on this function.
+    // processPaymentResult can throw) to a 400 — see the comment above.
     throw new ApiError(400, errMessage(err));
   }
 }
