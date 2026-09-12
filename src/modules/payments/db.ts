@@ -49,6 +49,19 @@ export function ensurePaymentsSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_payments_status ON payments (status);
       CREATE INDEX IF NOT EXISTS idx_payments_booking_id ON payments (booking_id);
       CREATE INDEX IF NOT EXISTS idx_payments_initiated_at ON payments (initiated_at);
+
+      -- Widened after the fact to add 'REFUND' as a purpose and 'WALLET' as
+      -- a payment method — refunds are tracked here now regardless of what
+      -- funded the original payment being refunded (see the note on
+      -- PaymentPurpose in types.ts). DROP+ADD on the unnamed CHECK
+      -- constraints Postgres auto-generated for the columns above, same
+      -- pattern as admins_role_check/drivers_status_check.
+      ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_purpose_check;
+      ALTER TABLE payments ADD CONSTRAINT payments_purpose_check
+        CHECK (purpose IN ('WALLET_FUNDING', 'BOOKING_PAYMENT', 'PACKAGE_PAYMENT', 'RENTAL_PAYMENT', 'REFUND', 'OTHER'));
+      ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_payment_method_check;
+      ALTER TABLE payments ADD CONSTRAINT payments_payment_method_check
+        CHECK (payment_method IN ('DEBIT_CARD', 'BANK_TRANSFER', 'WALLET'));
     `,
       )
       .then(() => undefined)

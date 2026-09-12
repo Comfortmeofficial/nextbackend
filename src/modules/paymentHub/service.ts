@@ -359,13 +359,24 @@ export async function payBooking(data: PayBookingRequestInput) {
       await attachPaymentBooking(reference, bookings[0].id);
     } catch {
       // Charge already succeeded — refund to wallet since seats couldn't be secured.
+      // A new reference: `reference` above already belongs to the original
+      // (successful) payment row, and payments.reference is unique.
+      const refundReference = randomUUID();
+      await createPayment({
+        reference: refundReference,
+        user_id: data.user_id,
+        amount: finalAmount,
+        purpose: "refund",
+        payment_method: "wallet",
+      });
       await fundWallet({
         user_id: data.user_id,
         amount: finalAmount,
         type: "refund",
         description: "Refund: seats unavailable after card payment",
-        reference,
+        reference: refundReference,
       });
+      await markPaymentSuccessful(refundReference);
       throw new ApiError(409, "Seats unavailable — amount refunded to your wallet");
     }
   } else if (data.payment_method === "debit_card" || data.payment_method === "bank_transfer") {
@@ -465,6 +476,14 @@ export async function cancelBookingHub(bookingId: number, requestingUserId: numb
   const reference = randomUUID();
 
   if (refundAmount > 0) {
+    await createPayment({
+      reference,
+      user_id: booking.user_id,
+      amount: refundAmount,
+      purpose: "refund",
+      payment_method: "wallet",
+      booking_id: bookingId,
+    });
     await fundWallet({
       user_id: booking.user_id,
       amount: refundAmount,
@@ -472,6 +491,7 @@ export async function cancelBookingHub(bookingId: number, requestingUserId: numb
       description: `Refund for cancelled booking #${bookingId} (10% cancellation fee deducted)`,
       reference,
     });
+    await markPaymentSuccessful(reference, { booking_id: bookingId });
   }
 
   try {
@@ -544,6 +564,15 @@ export async function payPackage(data: PayPackageRequestInput) {
       pkg = await createPackage(packagePayload);
     } catch (err) {
       // Charge already succeeded — refund since the package couldn't be created.
+      // reference is unused elsewhere in this branch (wallet payments aren't
+      // tracked in `payments`), so it's safe to reuse for the refund row.
+      await createPayment({
+        reference,
+        user_id: data.sender_user_id,
+        amount: data.amount,
+        purpose: "refund",
+        payment_method: "wallet",
+      });
       await fundWallet({
         user_id: data.sender_user_id,
         amount: data.amount,
@@ -551,6 +580,7 @@ export async function payPackage(data: PayPackageRequestInput) {
         description: "Refund: could not register package",
         reference,
       });
+      await markPaymentSuccessful(reference);
       throw new ApiError(400, `Could not register package, amount refunded: ${errMessage(err)}`);
     }
   } else if (data.payment_method === "debit_card" && data.authorization_code) {
@@ -584,13 +614,24 @@ export async function payPackage(data: PayPackageRequestInput) {
     try {
       pkg = await createPackage(packagePayload);
     } catch (err) {
+      // A new reference: `reference` above already belongs to the original
+      // (successful) payment row, and payments.reference is unique.
+      const refundReference = randomUUID();
+      await createPayment({
+        reference: refundReference,
+        user_id: data.sender_user_id,
+        amount: data.amount,
+        purpose: "refund",
+        payment_method: "wallet",
+      });
       await fundWallet({
         user_id: data.sender_user_id,
         amount: data.amount,
         type: "refund",
         description: "Refund: could not register package after card payment",
-        reference,
+        reference: refundReference,
       });
+      await markPaymentSuccessful(refundReference);
       throw new ApiError(400, `Could not register package, amount refunded: ${errMessage(err)}`);
     }
   } else if (data.payment_method === "debit_card") {
@@ -917,14 +958,25 @@ export async function processPaymentResult(
           await rewardReferrerIfEligible(userId, "booking");
         } catch {
           // Payment already succeeded — refund to wallet since seats couldn't be secured.
+          // A new reference: `reference` already belongs to the original
+          // (successful) payment row, and payments.reference is unique.
           if (userId) {
+            const refundReference = randomUUID();
+            await createPayment({
+              reference: refundReference,
+              user_id: userId,
+              amount: result.amount,
+              purpose: "refund",
+              payment_method: "wallet",
+            });
             await fundWallet({
               user_id: userId,
               amount: result.amount,
               type: "refund",
               description: "Refund: seats unavailable after card payment",
-              reference,
+              reference: refundReference,
             });
+            await markPaymentSuccessful(refundReference);
           }
           throw new ApiError(409, "Seats unavailable — amount refunded to your wallet");
         }
@@ -951,14 +1003,25 @@ export async function processPaymentResult(
             push_token: contact.push_token,
           });
         } catch {
+          // A new reference: `reference` already belongs to the original
+          // (successful) payment row, and payments.reference is unique.
           if (senderUserId) {
+            const refundReference = randomUUID();
+            await createPayment({
+              reference: refundReference,
+              user_id: senderUserId,
+              amount: result.amount,
+              purpose: "refund",
+              payment_method: "wallet",
+            });
             await fundWallet({
               user_id: senderUserId,
               amount: result.amount,
               type: "refund",
               description: "Refund: could not register package after card payment",
-              reference,
+              reference: refundReference,
             });
+            await markPaymentSuccessful(refundReference);
           }
           throw new ApiError(400, "Could not register package — amount refunded to your wallet");
         }

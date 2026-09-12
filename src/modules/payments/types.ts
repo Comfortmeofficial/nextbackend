@@ -27,16 +27,22 @@ export interface VerifyPaymentResult {
 
 // ─── Payments ledger ────────────────────────────────────────────────────────
 //
-// One row per Paystack-initiated transaction — money that actually goes
-// through Paystack (wallet top-ups, direct card/bank-transfer booking and
-// package payments). Deliberately excludes: paying a booking *from* an
-// already-funded wallet (no Paystack call happens, it's a wallet-ledger
-// entry — see wallet/repository.ts), and cancellation refunds credited back
-// to the wallet (also an internal ledger entry, not a Paystack refund call).
+// One row per: (a) a Paystack-initiated transaction — wallet top-ups, direct
+// card/bank-transfer booking and package payments — and (b) a refund, no
+// matter what funded the original payment being refunded. Deliberately
+// excludes paying a booking/package/rental *from* an already-funded wallet —
+// no new money enters or leaves the system there, it's purely an internal
+// wallet-ledger entry (see wallet/repository.ts) already accounted for by
+// whatever payment funded the wallet in the first place.
+//
+// Refunds are always payment_method "wallet" (that's where the money lands,
+// regardless of whether the original payment was card/bank/wallet) and are
+// created already SUCCESSFUL — crediting a wallet is synchronous, there's no
+// external confirmation step the way a Paystack charge has.
 
-export type PaymentPurpose = "wallet_funding" | "booking_payment" | "package_payment" | "rental_payment" | "other";
+export type PaymentPurpose = "wallet_funding" | "booking_payment" | "package_payment" | "rental_payment" | "refund" | "other";
 export type PaymentStatus = "pending" | "successful" | "failed";
-export type PaymentMethod = "debit_card" | "bank_transfer";
+export type PaymentMethod = "debit_card" | "bank_transfer" | "wallet";
 
 export interface PaymentRow {
   id: number;
