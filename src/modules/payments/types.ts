@@ -27,22 +27,20 @@ export interface VerifyPaymentResult {
 
 // ─── Payments ledger ────────────────────────────────────────────────────────
 //
-// One row per: (a) a Paystack-initiated transaction — wallet top-ups, direct
-// card/bank-transfer booking and package payments — and (b) a refund, no
-// matter what funded the original payment being refunded. Deliberately
-// excludes paying a booking/package/rental *from* an already-funded wallet —
-// no new money enters or leaves the system there, it's purely an internal
-// wallet-ledger entry (see wallet/repository.ts) already accounted for by
-// whatever payment funded the wallet in the first place.
-//
-// Refunds are always payment_method "wallet" (that's where the money lands,
-// regardless of whether the original payment was card/bank/wallet) and are
-// created already SUCCESSFUL — crediting a wallet is synchronous, there's no
-// external confirmation step the way a Paystack charge has.
+// One row per Paystack-initiated transaction — wallet top-ups, and direct
+// card/bank-transfer booking/package/rental payments. Deliberately just
+// "what came in via Paystack": excludes paying a booking/package/rental
+// *from* an already-funded wallet (purely an internal wallet-ledger entry,
+// no new money enters or leaves the system — see wallet/repository.ts), and
+// deliberately excludes refunds too, even one for a Paystack-sourced
+// payment — a refund only ever credits the wallet, never reverses anything
+// through Paystack itself, so it stays wallet-ledger-only rather than
+// muddying this table with an outflow. (This table briefly tracked refunds
+// too; reverted — see the reasoning in the PR/commit history if it matters.)
 
-export type PaymentPurpose = "wallet_funding" | "booking_payment" | "package_payment" | "rental_payment" | "refund" | "other";
+export type PaymentPurpose = "wallet_funding" | "booking_payment" | "package_payment" | "rental_payment" | "other";
 export type PaymentStatus = "pending" | "successful" | "failed";
-export type PaymentMethod = "debit_card" | "bank_transfer" | "wallet";
+export type PaymentMethod = "debit_card" | "bank_transfer";
 
 export interface PaymentRow {
   id: number;

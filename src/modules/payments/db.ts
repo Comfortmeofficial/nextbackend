@@ -50,10 +50,12 @@ export function ensurePaymentsSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_payments_booking_id ON payments (booking_id);
       CREATE INDEX IF NOT EXISTS idx_payments_initiated_at ON payments (initiated_at);
 
-      -- Widened after the fact to add 'REFUND' as a purpose and 'WALLET' as
-      -- a payment method — refunds are tracked here now regardless of what
-      -- funded the original payment being refunded (see the note on
-      -- PaymentPurpose in types.ts). DROP+ADD on the unnamed CHECK
+      -- Widened after the fact to add 'REFUND'/'WALLET', then reverted at
+      -- the application layer — refunds are wallet-ledger-only now (see the
+      -- note on PaymentPurpose in types.ts) — but left permissive here
+      -- rather than narrowing the constraint back, since that buys nothing
+      -- (the app just never writes those values) and narrowing is one more
+      -- migration for zero behavioral benefit. DROP+ADD on the unnamed CHECK
       -- constraints Postgres auto-generated for the columns above, same
       -- pattern as admins_role_check/drivers_status_check.
       ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_purpose_check;
