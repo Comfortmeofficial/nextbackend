@@ -131,6 +131,8 @@ export interface CreateRideInput {
   driverId: number;
   driverName: string;
   driverRating: number;
+  marshalAdminId: number | null;
+  marshalName: string | null;
   busPlate: string;
   busModel: string;
   departureTime: Date;
@@ -145,17 +147,52 @@ export interface CreateRideInput {
   scheduleId: number | null;
 }
 
+// A bus can run several trips a day with no restriction on that — this only
+// rejects two trips on the *same* bus whose time windows actually overlap.
+// A ride with no arrival_time is treated as a zero-length point in time for
+// this check (the honest fallback when duration is unknown), so it can only
+// conflict with something else scheduled at that exact instant.
+async function assertNoBusConflict(
+  busId: number,
+  departureTime: Date,
+  arrivalTime: Date | null,
+  excludeRideId: number | null,
+): Promise<void> {
+  const pool = getBookingPool();
+  const conditions = [
+    `bus_id = $1`,
+    `deleted_at IS NULL`,
+    `status != 'cancelled'`,
+    `departure_time < $2`,
+    `COALESCE(arrival_time, departure_time) > $3`,
+  ];
+  const params: unknown[] = [busId, arrivalTime ?? departureTime, departureTime];
+  if (excludeRideId != null) {
+    params.push(excludeRideId);
+    conditions.push(`id != $${params.length}`);
+  }
+  const { rows } = await pool.query(
+    `SELECT id FROM rides WHERE ${conditions.join(" AND ")} LIMIT 1`,
+    params,
+  );
+  if (rows.length > 0) {
+    throw new ApiError(409, `bus ${busId} already has an overlapping trip (ride #${rows[0].id})`);
+  }
+}
+
 export async function createRide(input: CreateRideInput): Promise<RideDto> {
   await ensureBookingSchema();
+  await assertNoBusConflict(input.busId, input.departureTime, input.arrivalTime, null);
   const pool = getBookingPool();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const { rows } = await client.query<RideRow>(
       `INSERT INTO rides (
-         route_id, bus_id, driver_id, driver_name, driver_rating, bus_plate, bus_model,
-         departure_time, arrival_time, fare, total_seats, status, driver_row, driver_col, schedule_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'scheduled', $12, $13, $14)
+         route_id, bus_id, driver_id, driver_name, driver_rating, marshal_admin_id, marshal_name,
+         bus_plate, bus_model, departure_time, arrival_time, fare, total_seats, status,
+         driver_row, driver_col, schedule_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'scheduled', $14, $15, $16)
        RETURNING *`,
       [
         input.routeId,
@@ -163,6 +200,8 @@ export async function createRide(input: CreateRideInput): Promise<RideDto> {
         input.driverId,
         input.driverName,
         input.driverRating,
+        input.marshalAdminId,
+        input.marshalName,
         input.busPlate,
         input.busModel,
         input.departureTime,

@@ -1,4 +1,5 @@
-import { getBus } from "@/modules/buses/repository";
+import { getAdmin } from "@/modules/admin/repository";
+import { getBus, getFirstAssignedMarshalId } from "@/modules/buses/repository";
 import { getDriver } from "@/modules/drivers/repository";
 import {
   sendRentalPricedNotification,
@@ -46,18 +47,43 @@ export interface BusInfo {
   plateNumber: string;
   model: string;
   seats: BusSeatDef[] | null;
+  // The bus's *current* assigned driver/marshal — always re-read here rather
+  // than trusted from any caller-supplied value, so a trip always reflects
+  // whoever is actually on the bus at the moment it's created, not whoever
+  // was assigned back when a schedule template was first set up.
+  driverId: number | null;
+  marshalId: number | null;
 }
 
 export async function fetchBusInfo(busId: number): Promise<BusInfo> {
   try {
     const bus = await getBus(busId);
+    const marshalId = await getFirstAssignedMarshalId(busId);
     return {
       plateNumber: bus.plate_number,
       model: bus.model,
       seats: bus.layout?.seats ?? null,
+      driverId: bus.driver_id,
+      marshalId,
     };
   } catch {
     throw new Error(`bus ${busId} not found`);
+  }
+}
+
+export interface MarshalInfo {
+  fullName: string;
+}
+
+// Best-effort — a bus can legitimately have no marshal assigned, and that
+// must never block ride/trip creation the way a missing driver does.
+export async function fetchMarshalInfo(marshalId: number): Promise<MarshalInfo | null> {
+  try {
+    const marshal = await getAdmin(marshalId);
+    if (!marshal || !marshal.is_active || marshal.role !== "bus_marshal") return null;
+    return { fullName: `${marshal.first_name} ${marshal.last_name}`.trim() };
+  } catch {
+    return null;
   }
 }
 

@@ -108,6 +108,11 @@ export function ensureBookingSchema(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         deleted_at TIMESTAMPTZ
       );
+      -- Legacy — a schedule no longer pins a driver (see the note on
+      -- rideScheduleInputSchema in validation.ts); each generated trip reads
+      -- the bus's *current* driver fresh instead. Existing rows keep
+      -- whatever value they already have; nothing writes this column anymore.
+      ALTER TABLE ride_schedules ALTER COLUMN driver_id DROP NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_ride_schedules_status ON ride_schedules (status);
       CREATE INDEX IF NOT EXISTS idx_ride_schedules_deleted_at ON ride_schedules (deleted_at);
 

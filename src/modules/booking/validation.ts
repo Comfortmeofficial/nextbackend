@@ -39,27 +39,38 @@ export type RouteInput = z.infer<typeof routeInputSchema>;
 // shape unmodified), so admins never have to leave the ride-creation form
 // to manage a separate, reusable Route entity. `total_seats` is gone too:
 // the bus's own seat layout is always authoritative (see POST /rides).
+// No driver_id either: the driver (and marshal) are always read from the
+// bus's own current assignment server-side, never accepted from the client
+// — see fetchBusInfo/POST /rides. A stray driver_id in an older client's
+// request body is simply ignored (zod strips unknown keys by default).
 export const rideInputSchema = z.object({
   route: routeInputSchema,
   bus_id: requiredId,
-  driver_id: requiredId,
   departure_time: requiredString,
   arrival_time: z.string().optional(),
   fare: requiredNonZero,
 });
 export type RideInput = z.infer<typeof rideInputSchema>;
 
-// A recurring ride template: the same route/bus/driver/fare shape as a
-// one-off ride, plus a departure time-of-day and a day-of-week recurrence
-// rule. Generates independent `rides` rows going forward — editing or
-// pausing a schedule never touches rows already generated from it.
+// A recurring ride template: the same route/bus/fare shape as a one-off
+// ride, plus a departure time-of-day and a day-of-week recurrence rule.
+// Generates independent `rides` rows going forward — editing or pausing a
+// schedule never touches rows already generated from it.
+//
+// No driver_id (see rideInputSchema's note — same reasoning, and it matters
+// more here: a schedule can keep generating trips for weeks, so pinning a
+// driver at schedule-creation time would go stale the moment that bus gets
+// reassigned. Each generated trip re-reads the bus's driver/marshal fresh.
+//
+// duration_minutes is required (not optional, unlike rideInputSchema) so
+// every generated trip has a real arrival_time — needed to detect whether a
+// bus's trips actually overlap, not just collide on the exact same minute.
 export const rideScheduleInputSchema = z.object({
   bus_id: requiredId,
-  driver_id: requiredId,
   route: routeInputSchema,
   fare: requiredNonZero,
   departure_time_of_day: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:MM"),
-  duration_minutes: z.number().int().positive().optional(),
+  duration_minutes: z.number().int().positive(),
   days_of_week: z.array(z.number().int().min(0).max(6)).min(1),
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD"),
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),

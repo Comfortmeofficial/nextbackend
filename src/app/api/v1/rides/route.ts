@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ApiError, handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { recordAuditLog } from "@/modules/admin/audit";
-import { fetchBusInfo, fetchDriverInfo } from "@/modules/booking/external";
+import { fetchBusInfo, fetchDriverInfo, fetchMarshalInfo } from "@/modules/booking/external";
 import { createRide, listRides, seatDefsFromBusSeats } from "@/modules/booking/repository/rides";
 import { createRoute } from "@/modules/booking/repository/routes";
 import { listQuerySchema, rideInputSchema } from "@/modules/booking/validation";
@@ -32,19 +32,26 @@ export async function POST(request: NextRequest) {
     const departureTime = parseRfc3339(input.departure_time, "departure_time");
     const arrivalTime = input.arrival_time ? parseRfc3339(input.arrival_time, "arrival_time") : null;
 
-    let driver;
-    try {
-      driver = await fetchDriverInfo(input.driver_id);
-    } catch (err) {
-      throw new ApiError(400, err instanceof Error ? err.message : String(err));
-    }
-    await assertDriverAssignable(input.driver_id);
+    // Driver and marshal are never taken from the request — always the
+    // bus's own current assignment, so this can't drift from whoever's
+    // actually on the bus at the moment the ride is created.
     let bus;
     try {
       bus = await fetchBusInfo(input.bus_id);
     } catch (err) {
       throw new ApiError(400, err instanceof Error ? err.message : String(err));
     }
+    if (!bus.driverId) {
+      throw new ApiError(400, `bus ${input.bus_id} has no driver assigned`);
+    }
+    let driver;
+    try {
+      driver = await fetchDriverInfo(bus.driverId);
+    } catch (err) {
+      throw new ApiError(400, err instanceof Error ? err.message : String(err));
+    }
+    await assertDriverAssignable(bus.driverId);
+    const marshal = bus.marshalId ? await fetchMarshalInfo(bus.marshalId) : null;
 
     const { seatDefs, driverRow, driverCol } = seatDefsFromBusSeats(bus.seats);
     if (seatDefs.length === 0) {
@@ -56,9 +63,11 @@ export async function POST(request: NextRequest) {
     const ride = await createRide({
       routeId: route.id,
       busId: input.bus_id,
-      driverId: input.driver_id,
+      driverId: bus.driverId,
       driverName: driver.fullName,
       driverRating: driver.rating,
+      marshalAdminId: bus.marshalId,
+      marshalName: marshal?.fullName ?? null,
       busPlate: bus.plateNumber,
       busModel: bus.model,
       departureTime,
@@ -73,7 +82,7 @@ export async function POST(request: NextRequest) {
     recordAuditLog(actor, request, "CREATE", "ride", ride.id, {
       route_id: route.id,
       bus_id: input.bus_id,
-      driver_id: input.driver_id,
+      driver_id: bus.driverId,
     });
     return NextResponse.json(ride, { status: 201 });
   } catch (error) {

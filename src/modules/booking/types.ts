@@ -153,7 +153,10 @@ export type RideScheduleStatus = "active" | "paused";
 export interface RideScheduleRow {
   id: number;
   bus_id: number;
-  driver_id: number;
+  // Legacy column — no longer written by createRideSchedule/updateRideSchedule
+  // (see the note on rideScheduleInputSchema). Driver is now always read
+  // fresh from the bus at generation time, so a schedule doesn't pin one.
+  driver_id: number | null;
   route_name: string;
   location_id: number;
   destination_id: number;
@@ -173,7 +176,6 @@ export interface RideScheduleRow {
 export interface RideScheduleDto {
   id: number;
   bus_id: number;
-  driver_id: number;
   route_name: string;
   location_id: number;
   destination_id: number;
@@ -187,7 +189,12 @@ export interface RideScheduleDto {
   end_date: string | null;
   status: RideScheduleStatus;
   bus_plate?: string;
+  // Best-effort preview of whoever's on the bus *right now* — informational
+  // only. The trip actually generated for any given date always re-reads
+  // this fresh at generation time, not from what was true when the admin
+  // last loaded this schedule.
   driver_name?: string;
+  marshal_name?: string;
   location?: PlaceDto;
   destination?: PlaceDto;
   created_at: string;

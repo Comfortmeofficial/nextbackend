@@ -1,7 +1,7 @@
 import { ApiError } from "@/lib/http-errors";
 import { assertDriverAssignable } from "@/modules/drivers/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
-import { fetchBusInfo, fetchDriverInfo } from "../external";
+import { fetchBusInfo, fetchDriverInfo, fetchMarshalInfo } from "../external";
 import type { PlaceRow, RideScheduleDto, RideScheduleRow, RideScheduleStatus } from "../types";
 import type { RideScheduleInput } from "../validation";
 import { createRoute } from "./routes";
@@ -30,22 +30,27 @@ async function toDto(row: RideScheduleRow): Promise<RideScheduleDto> {
   ]);
   let busPlate: string | undefined;
   let driverName: string | undefined;
+  let marshalName: string | undefined;
   try {
     const bus = await fetchBusInfo(row.bus_id);
     busPlate = bus.plateNumber;
-  } catch {
-    // best-effort display info only
-  }
-  try {
-    const driver = await fetchDriverInfo(row.driver_id);
-    driverName = driver.fullName;
+    if (bus.driverId) {
+      try {
+        driverName = (await fetchDriverInfo(bus.driverId)).fullName;
+      } catch {
+        // best-effort display info only
+      }
+    }
+    if (bus.marshalId) {
+      const marshal = await fetchMarshalInfo(bus.marshalId);
+      marshalName = marshal?.fullName;
+    }
   } catch {
     // best-effort display info only
   }
   return {
     id: row.id,
     bus_id: row.bus_id,
-    driver_id: row.driver_id,
     route_name: row.route_name,
     location_id: row.location_id,
     destination_id: row.destination_id,
@@ -60,6 +65,7 @@ async function toDto(row: RideScheduleRow): Promise<RideScheduleDto> {
     status: row.status,
     bus_plate: busPlate,
     driver_name: driverName,
+    marshal_name: marshalName,
     location: locationRows[0] ? placeDto(locationRows[0]) : undefined,
     destination: destinationRows[0] ? placeDto(destinationRows[0]) : undefined,
     created_at: row.created_at.toISOString(),
@@ -72,13 +78,12 @@ export async function createRideSchedule(input: RideScheduleInput): Promise<Ride
   const pool = getBookingPool();
   const { rows } = await pool.query<RideScheduleRow>(
     `INSERT INTO ride_schedules (
-       bus_id, driver_id, route_name, location_id, destination_id, distance_km, stops,
+       bus_id, route_name, location_id, destination_id, distance_km, stops,
        fare, departure_time_of_day, duration_minutes, days_of_week, start_date, end_date
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING *`,
     [
       input.bus_id,
-      input.driver_id,
       input.route.name,
       input.route.location_id,
       input.route.destination_id,
@@ -86,7 +91,7 @@ export async function createRideSchedule(input: RideScheduleInput): Promise<Ride
       JSON.stringify(input.route.stops.map((s) => ({ stop_id: s.stop_id, fare: s.fare ?? null }))),
       input.fare,
       input.departure_time_of_day,
-      input.duration_minutes ?? null,
+      input.duration_minutes,
       JSON.stringify(input.days_of_week),
       input.start_date,
       input.end_date ?? null,
@@ -125,15 +130,14 @@ export async function updateRideSchedule(id: number, input: RideScheduleInput): 
   const pool = getBookingPool();
   const { rows } = await pool.query<RideScheduleRow>(
     `UPDATE ride_schedules SET
-       bus_id=$2, driver_id=$3, route_name=$4, location_id=$5, destination_id=$6,
-       distance_km=$7, stops=$8, fare=$9, departure_time_of_day=$10, duration_minutes=$11,
-       days_of_week=$12, start_date=$13, end_date=$14, updated_at=now()
+       bus_id=$2, route_name=$3, location_id=$4, destination_id=$5,
+       distance_km=$6, stops=$7, fare=$8, departure_time_of_day=$9, duration_minutes=$10,
+       days_of_week=$11, start_date=$12, end_date=$13, updated_at=now()
      WHERE id=$1 AND deleted_at IS NULL
      RETURNING *`,
     [
       id,
       input.bus_id,
-      input.driver_id,
       input.route.name,
       input.route.location_id,
       input.route.destination_id,
@@ -141,7 +145,7 @@ export async function updateRideSchedule(id: number, input: RideScheduleInput): 
       JSON.stringify(input.route.stops.map((s) => ({ stop_id: s.stop_id, fare: s.fare ?? null }))),
       input.fare,
       input.departure_time_of_day,
-      input.duration_minutes ?? null,
+      input.duration_minutes,
       JSON.stringify(input.days_of_week),
       input.start_date,
       input.end_date ?? null,
@@ -214,6 +218,7 @@ async function rideExistsForScheduleOnDate(scheduleId: number, dateStr: string):
 export interface GenerateRidesSummary {
   created: number;
   skipped: number;
+  conflicts: number;
   errors: string[];
 }
 
@@ -239,6 +244,7 @@ export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSumm
 
   let created = 0;
   let skipped = 0;
+  let conflicts = 0;
   const errors: string[] = [];
 
   for (const schedule of schedules) {
@@ -255,9 +261,17 @@ export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSumm
       }
 
       try {
-        const driver = await fetchDriverInfo(schedule.driver_id);
-        await assertDriverAssignable(schedule.driver_id);
+        // Driver and marshal are always read fresh from the bus here, never
+        // from anything stored on the schedule — a schedule can keep
+        // generating trips for weeks, and the bus's assignment can change
+        // at any point in that window (see the note on rideScheduleInputSchema).
         const bus = await fetchBusInfo(schedule.bus_id);
+        if (!bus.driverId) {
+          throw new Error(`bus ${schedule.bus_id} has no driver assigned`);
+        }
+        const driver = await fetchDriverInfo(bus.driverId);
+        await assertDriverAssignable(bus.driverId);
+        const marshal = bus.marshalId ? await fetchMarshalInfo(bus.marshalId) : null;
         const { seatDefs, driverRow, driverCol } = seatDefsFromBusSeats(bus.seats);
         if (seatDefs.length === 0) {
           throw new Error(`bus ${schedule.bus_id} has no seats configured`);
@@ -273,9 +287,11 @@ export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSumm
         await createRide({
           routeId: route.id,
           busId: schedule.bus_id,
-          driverId: schedule.driver_id,
+          driverId: bus.driverId,
           driverName: driver.fullName,
           driverRating: driver.rating,
+          marshalAdminId: bus.marshalId,
+          marshalName: marshal?.fullName ?? null,
           busPlate: bus.plateNumber,
           busModel: bus.model,
           departureTime,
@@ -289,10 +305,19 @@ export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSumm
         });
         created++;
       } catch (err) {
-        errors.push(`schedule ${schedule.id} on ${date}: ${err instanceof Error ? err.message : String(err)}`);
+        // createRide's own overlap check throws a 409 ApiError — surfaced
+        // here as a distinct count, not lumped in with genuine failures
+        // (a missing driver, an unseated bus), since an overlap is an
+        // expected, self-resolving outcome (a manually-created ride already
+        // occupies that slot) rather than something needing admin attention.
+        if (err instanceof ApiError && err.status === 409) {
+          conflicts++;
+        } else {
+          errors.push(`schedule ${schedule.id} on ${date}: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
     }
   }
 
-  return { created, skipped, errors };
+  return { created, skipped, conflicts, errors };
 }

@@ -283,6 +283,20 @@ export async function getMarshalIdsForBus(busId: number): Promise<number[]> {
   return rows.map((r) => r.marshal_id);
 }
 
+// Used when a trip needs exactly one marshal from a bus that may have
+// several (ride generation, ride creation) — "first assigned" by actual
+// assignment order, not id order like getMarshalIdsForBus above (that one's
+// for display, this one's for picking).
+export async function getFirstAssignedMarshalId(busId: number): Promise<number | null> {
+  await ensureBusesSchema();
+  const pool = getBusesPool();
+  const { rows } = await pool.query<{ marshal_id: number }>(
+    `SELECT marshal_id FROM bus_marshals WHERE bus_id = $1 ORDER BY created_at ASC LIMIT 1`,
+    [busId],
+  );
+  return rows[0] ? rows[0].marshal_id : null;
+}
+
 async function getMarshalIdsForBuses(busIds: number[]): Promise<Map<number, number[]>> {
   if (busIds.length === 0) return new Map();
   await ensureBusesSchema();
