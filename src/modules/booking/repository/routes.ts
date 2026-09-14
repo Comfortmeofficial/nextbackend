@@ -1,7 +1,7 @@
 import { ApiError } from "@/lib/http-errors";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import { findOrCreatePlaceIdByLocation } from "./places";
-import type { PlaceRow, RouteDto, RouteRow, RouteStopDto } from "../types";
+import type { PlaceRow, RouteDto, RouteRow, RouteStatus, RouteStopDto } from "../types";
 import type { RouteInput } from "../validation";
 
 function placeDto(row: PlaceRow) {
@@ -78,6 +78,7 @@ async function loadFullRoute(id: number): Promise<RouteDto | null> {
       ? { estimated_duration_minutes: route.estimated_duration_minutes }
       : {}),
     ...(route.google_distance_km != null ? { google_distance_km: route.google_distance_km } : {}),
+    status: route.status,
     location: locationRows[0] ? placeDto(locationRows[0]) : ({} as ReturnType<typeof placeDto>),
     destination: destinationRows[0] ? placeDto(destinationRows[0]) : ({} as ReturnType<typeof placeDto>),
     stops,
@@ -133,12 +134,19 @@ export async function createRoute(input: RouteInput): Promise<RouteDto> {
   }
 }
 
-export async function listRoutes(skip: number, limit: number): Promise<RouteDto[]> {
+export async function listRoutes(skip: number, limit: number, status?: RouteStatus): Promise<RouteDto[]> {
   await ensureBookingSchema();
   const pool = getBookingPool();
+  const conditions = ["deleted_at IS NULL"];
+  const params: unknown[] = [];
+  if (status) {
+    params.push(status);
+    conditions.push(`status = $${params.length}`);
+  }
+  params.push(skip, limit);
   const { rows } = await pool.query<{ id: number }>(
-    `SELECT id FROM routes WHERE deleted_at IS NULL OFFSET $1 LIMIT $2`,
-    [skip, limit],
+    `SELECT id FROM routes WHERE ${conditions.join(" AND ")} ORDER BY name ASC OFFSET $${params.length - 1} LIMIT $${params.length}`,
+    params,
   );
   // Sequential, not Promise.all — loadFullRoute makes 4+ queries per route,
   // so firing all of them at once for N routes bursts to 4N concurrent
@@ -166,6 +174,22 @@ export async function deleteRoute(id: number): Promise<void> {
   await ensureBookingSchema();
   const pool = getBookingPool();
   await pool.query(`UPDATE routes SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
+}
+
+// Same pause-not-delete pattern as ride schedule status: marking a route
+// inactive only stops it being offered for new schedules/rides going
+// forward (see the active-only filter on GET /routes and the check in
+// POST /rides and /ride-schedules) — it never touches anything already
+// generated that references this route.
+export async function updateRouteStatus(id: number, status: RouteStatus): Promise<RouteDto> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const { rows } = await pool.query<{ id: number }>(
+    `UPDATE routes SET status = $2, updated_at = now() WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
+    [id, status],
+  );
+  if (!rows[0]) throw new ApiError(404, "Route not found");
+  return getRoute(id);
 }
 
 export async function updateRouteEta(

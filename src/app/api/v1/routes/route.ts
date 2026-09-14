@@ -18,11 +18,15 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/v1/routes
+// GET /api/v1/routes?skip=0&limit=100&status=active — the Schedule/Ride
+// creation pickers pass status=active so an inactive route never shows up
+// there; the admin's own Routes page omits it to manage both.
 export async function GET(request: NextRequest) {
   try {
     const { skip, limit } = listQuerySchema.parse(Object.fromEntries(request.nextUrl.searchParams));
-    const items = await listRoutes(skip, limit);
+    const statusParam = request.nextUrl.searchParams.get("status");
+    const status = statusParam === "active" || statusParam === "inactive" ? statusParam : undefined;
+    const items = await listRoutes(skip, limit, status);
     return NextResponse.json(items);
   } catch (error) {
     return handleRouteError(error);

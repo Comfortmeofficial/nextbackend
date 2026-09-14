@@ -34,17 +34,18 @@ export const routeInputSchema = z.object({
 });
 export type RouteInput = z.infer<typeof routeInputSchema>;
 
-// Ride creation no longer picks an existing route — it always creates a
-// fresh, ride-specific one from these fields (reusing routeInputSchema's
-// shape unmodified), so admins never have to leave the ride-creation form
-// to manage a separate, reusable Route entity. `total_seats` is gone too:
-// the bus's own seat layout is always authoritative (see POST /rides).
-// No driver_id either: the driver (and marshal) are always read from the
-// bus's own current assignment server-side, never accepted from the client
-// — see fetchBusInfo/POST /rides. A stray driver_id in an older client's
-// request body is simply ignored (zod strips unknown keys by default).
+export const routeStatusInputSchema = z.object({ status: z.enum(["active", "inactive"]) });
+
+// Ride creation picks an existing, reusable route by id (created once via
+// POST /routes, managed on the admin's Routes page) rather than re-creating
+// one from scratch every time — see the note on the old shape of this in
+// git history if it matters. `total_seats` is gone too: the bus's own seat
+// layout is always authoritative (see POST /rides). No driver_id either:
+// the driver (and marshal) are always read from the bus's own current
+// assignment server-side, never accepted from the client — see
+// fetchBusInfo/POST /rides.
 export const rideInputSchema = z.object({
-  route: routeInputSchema,
+  route_id: requiredId,
   bus_id: requiredId,
   departure_time: requiredString,
   arrival_time: z.string().optional(),
@@ -67,7 +68,7 @@ export type RideInput = z.infer<typeof rideInputSchema>;
 // bus's trips actually overlap, not just collide on the exact same minute.
 export const rideScheduleInputSchema = z.object({
   bus_id: requiredId,
-  route: routeInputSchema,
+  route_id: requiredId,
   fare: requiredNonZero,
   departure_time_of_day: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:MM"),
   duration_minutes: z.number().int().positive(),

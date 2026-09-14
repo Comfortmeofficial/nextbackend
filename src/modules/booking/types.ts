@@ -23,6 +23,8 @@ export interface PlaceDto {
   updated_at: string;
 }
 
+export type RouteStatus = "active" | "inactive";
+
 export interface RouteRow {
   id: number;
   name: string;
@@ -31,6 +33,7 @@ export interface RouteRow {
   distance: number;
   estimated_duration_minutes: number | null;
   google_distance_km: number | null;
+  status: RouteStatus;
   created_at: Date;
   updated_at: Date;
 }
@@ -54,6 +57,7 @@ export interface RouteDto {
   distance_km: number;
   estimated_duration_minutes?: number;
   google_distance_km?: number;
+  status: RouteStatus;
   location: PlaceDto;
   destination: PlaceDto;
   stops: RouteStopDto[];
@@ -157,11 +161,16 @@ export interface RideScheduleRow {
   // (see the note on rideScheduleInputSchema). Driver is now always read
   // fresh from the bus at generation time, so a schedule doesn't pin one.
   driver_id: number | null;
-  route_name: string;
-  location_id: number;
-  destination_id: number;
-  distance_km: number;
-  stops: { stop_id: number; fare: number | null }[];
+  // route_id is the live reference going forward; route_name/location_id/
+  // destination_id/distance_km/stops below are a legacy denormalized
+  // snapshot, still populated on old rows (created before Routes became a
+  // reusable entity) but no longer written for new/updated schedules.
+  route_id: number | null;
+  route_name: string | null;
+  location_id: number | null;
+  destination_id: number | null;
+  distance_km: number | null;
+  stops: { stop_id: number; fare: number | null }[] | null;
   fare: number;
   departure_time_of_day: string;
   duration_minutes: number | null;
@@ -176,6 +185,7 @@ export interface RideScheduleRow {
 export interface RideScheduleDto {
   id: number;
   bus_id: number;
+  route_id: number | null;
   route_name: string;
   location_id: number;
   destination_id: number;

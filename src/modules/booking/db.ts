@@ -76,6 +76,14 @@ export function ensureBookingSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_routes_deleted_at ON routes (deleted_at);
       CREATE INDEX IF NOT EXISTS idx_routes_location_id ON routes (location_id);
       CREATE INDEX IF NOT EXISTS idx_routes_destination_id ON routes (destination_id);
+      -- A route is now a reusable, admin-managed entity (Routes page) rather
+      -- than something re-created from scratch on every ride/schedule — see
+      -- ride_schedules.route_id below. Existing rows all default to active;
+      -- nothing about their historical behavior changes.
+      ALTER TABLE routes ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active';
+      ALTER TABLE routes DROP CONSTRAINT IF EXISTS routes_status_check;
+      ALTER TABLE routes ADD CONSTRAINT routes_status_check CHECK (status IN ('active', 'inactive'));
+      CREATE INDEX IF NOT EXISTS idx_routes_status ON routes (status);
 
       CREATE TABLE IF NOT EXISTS route_stops (
         id SERIAL PRIMARY KEY,
@@ -113,6 +121,21 @@ export function ensureBookingSchema(): Promise<void> {
       -- the bus's *current* driver fresh instead. Existing rows keep
       -- whatever value they already have; nothing writes this column anymore.
       ALTER TABLE ride_schedules ALTER COLUMN driver_id DROP NOT NULL;
+      -- A schedule now points at a reusable route instead of carrying its
+      -- own denormalized name/location/destination/stops snapshot — those
+      -- columns above stay in place (nullable-in-spirit even though not
+      -- literally, since old rows already have them) purely for existing
+      -- rows created before this; nothing writes them going forward.
+      ALTER TABLE ride_schedules ADD COLUMN IF NOT EXISTS route_id INTEGER REFERENCES routes(id);
+      -- These five were mandatory back when every schedule carried its own
+      -- denormalized route snapshot. Nothing writes them for a schedule
+      -- created/edited after route_id existed, so they need to accept NULL.
+      ALTER TABLE ride_schedules ALTER COLUMN route_name DROP NOT NULL;
+      ALTER TABLE ride_schedules ALTER COLUMN location_id DROP NOT NULL;
+      ALTER TABLE ride_schedules ALTER COLUMN destination_id DROP NOT NULL;
+      ALTER TABLE ride_schedules ALTER COLUMN distance_km DROP NOT NULL;
+      ALTER TABLE ride_schedules ALTER COLUMN stops DROP NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_ride_schedules_route_id ON ride_schedules (route_id);
       CREATE INDEX IF NOT EXISTS idx_ride_schedules_status ON ride_schedules (status);
       CREATE INDEX IF NOT EXISTS idx_ride_schedules_deleted_at ON ride_schedules (deleted_at);
 

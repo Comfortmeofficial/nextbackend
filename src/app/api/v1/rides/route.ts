@@ -4,7 +4,7 @@ import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { recordAuditLog } from "@/modules/admin/audit";
 import { fetchBusInfo, fetchDriverInfo, fetchMarshalInfo } from "@/modules/booking/external";
 import { createRide, listRides, seatDefsFromBusSeats } from "@/modules/booking/repository/rides";
-import { createRoute } from "@/modules/booking/repository/routes";
+import { getRoute } from "@/modules/booking/repository/routes";
 import { listQuerySchema, rideInputSchema } from "@/modules/booking/validation";
 import { assertDriverAssignable } from "@/modules/drivers/repository";
 
@@ -58,7 +58,10 @@ export async function POST(request: NextRequest) {
       throw new ApiError(400, `bus ${input.bus_id} has no seats configured — set its layout before scheduling rides`);
     }
 
-    const route = await createRoute(input.route);
+    const route = await getRoute(input.route_id);
+    if (route.status !== "active") {
+      throw new ApiError(400, `route ${input.route_id} is inactive`);
+    }
 
     const ride = await createRide({
       routeId: route.id,

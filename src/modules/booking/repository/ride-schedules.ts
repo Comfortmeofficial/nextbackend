@@ -4,7 +4,7 @@ import { ensureBookingSchema, getBookingPool } from "../db";
 import { fetchBusInfo, fetchDriverInfo, fetchMarshalInfo } from "../external";
 import type { PlaceRow, RideScheduleDto, RideScheduleRow, RideScheduleStatus } from "../types";
 import type { RideScheduleInput } from "../validation";
-import { createRoute } from "./routes";
+import { createRoute, getRoute } from "./routes";
 import { createRide, seatDefsFromBusSeats } from "./rides";
 
 function placeDto(row: PlaceRow) {
@@ -21,13 +21,46 @@ function placeDto(row: PlaceRow) {
 
 async function toDto(row: RideScheduleRow): Promise<RideScheduleDto> {
   const pool = getBookingPool();
-  // Both location_id and destination_id on ride_schedules are locations.id
-  // — the admin form's route picker only ever sends ids from the unified
-  // Locations list (see createRoute's own comment on the same point).
-  const [{ rows: locationRows }, { rows: destinationRows }] = await Promise.all([
-    pool.query<PlaceRow>(`SELECT * FROM locations WHERE id = $1`, [row.location_id]),
-    pool.query<PlaceRow>(`SELECT * FROM locations WHERE id = $1`, [row.destination_id]),
-  ]);
+
+  // route_id is the live reference for schedules created/edited after
+  // Routes became reusable — its own name/location/destination/distance/
+  // stops are authoritative. Older rows have no route_id at all; those fall
+  // back to the denormalized snapshot columns captured back when this
+  // schedule was created (see the note on RideScheduleRow).
+  let routeName: string;
+  let locationId: number;
+  let destinationId: number;
+  let distanceKm: number;
+  let stops: RideScheduleRow["stops"];
+  let locationDto: ReturnType<typeof placeDto> | undefined;
+  let destinationDto: ReturnType<typeof placeDto> | undefined;
+
+  if (row.route_id) {
+    const route = await getRoute(row.route_id);
+    routeName = route.name;
+    locationId = route.location_id;
+    destinationId = route.destination_id;
+    distanceKm = route.distance_km;
+    stops = route.stops.map((s) => ({ stop_id: s.stop_id, fare: s.fare }));
+    locationDto = route.location as ReturnType<typeof placeDto>;
+    destinationDto = route.destination as ReturnType<typeof placeDto>;
+  } else {
+    // A row this old always has these populated in practice (they were
+    // required at insert time before route_id existed) — the fallbacks
+    // here are purely defensive, not an expected path.
+    routeName = row.route_name ?? "Unknown route";
+    locationId = row.location_id ?? 0;
+    destinationId = row.destination_id ?? 0;
+    distanceKm = row.distance_km ?? 0;
+    stops = row.stops ?? [];
+    const [{ rows: locationRows }, { rows: destinationRows }] = await Promise.all([
+      pool.query<PlaceRow>(`SELECT * FROM locations WHERE id = $1`, [locationId]),
+      pool.query<PlaceRow>(`SELECT * FROM locations WHERE id = $1`, [destinationId]),
+    ]);
+    locationDto = locationRows[0] ? placeDto(locationRows[0]) : undefined;
+    destinationDto = destinationRows[0] ? placeDto(destinationRows[0]) : undefined;
+  }
+
   let busPlate: string | undefined;
   let driverName: string | undefined;
   let marshalName: string | undefined;
@@ -51,11 +84,12 @@ async function toDto(row: RideScheduleRow): Promise<RideScheduleDto> {
   return {
     id: row.id,
     bus_id: row.bus_id,
-    route_name: row.route_name,
-    location_id: row.location_id,
-    destination_id: row.destination_id,
-    distance_km: row.distance_km,
-    stops: row.stops,
+    route_id: row.route_id,
+    route_name: routeName,
+    location_id: locationId,
+    destination_id: destinationId,
+    distance_km: distanceKm,
+    stops,
     fare: row.fare,
     departure_time_of_day: row.departure_time_of_day,
     duration_minutes: row.duration_minutes,
@@ -66,8 +100,8 @@ async function toDto(row: RideScheduleRow): Promise<RideScheduleDto> {
     bus_plate: busPlate,
     driver_name: driverName,
     marshal_name: marshalName,
-    location: locationRows[0] ? placeDto(locationRows[0]) : undefined,
-    destination: destinationRows[0] ? placeDto(destinationRows[0]) : undefined,
+    location: locationDto,
+    destination: destinationDto,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -78,17 +112,12 @@ export async function createRideSchedule(input: RideScheduleInput): Promise<Ride
   const pool = getBookingPool();
   const { rows } = await pool.query<RideScheduleRow>(
     `INSERT INTO ride_schedules (
-       bus_id, route_name, location_id, destination_id, distance_km, stops,
-       fare, departure_time_of_day, duration_minutes, days_of_week, start_date, end_date
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       bus_id, route_id, fare, departure_time_of_day, duration_minutes, days_of_week, start_date, end_date
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
     [
       input.bus_id,
-      input.route.name,
-      input.route.location_id,
-      input.route.destination_id,
-      input.route.distance_km,
-      JSON.stringify(input.route.stops.map((s) => ({ stop_id: s.stop_id, fare: s.fare ?? null }))),
+      input.route_id,
       input.fare,
       input.departure_time_of_day,
       input.duration_minutes,
@@ -130,19 +159,14 @@ export async function updateRideSchedule(id: number, input: RideScheduleInput): 
   const pool = getBookingPool();
   const { rows } = await pool.query<RideScheduleRow>(
     `UPDATE ride_schedules SET
-       bus_id=$2, route_name=$3, location_id=$4, destination_id=$5,
-       distance_km=$6, stops=$7, fare=$8, departure_time_of_day=$9, duration_minutes=$10,
-       days_of_week=$11, start_date=$12, end_date=$13, updated_at=now()
+       bus_id=$2, route_id=$3, fare=$4, departure_time_of_day=$5, duration_minutes=$6,
+       days_of_week=$7, start_date=$8, end_date=$9, updated_at=now()
      WHERE id=$1 AND deleted_at IS NULL
      RETURNING *`,
     [
       id,
       input.bus_id,
-      input.route.name,
-      input.route.location_id,
-      input.route.destination_id,
-      input.route.distance_km,
-      JSON.stringify(input.route.stops.map((s) => ({ stop_id: s.stop_id, fare: s.fare ?? null }))),
+      input.route_id,
       input.fare,
       input.departure_time_of_day,
       input.duration_minutes,
@@ -277,15 +301,30 @@ export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSumm
           throw new Error(`bus ${schedule.bus_id} has no seats configured`);
         }
         const { departureTime, arrivalTime } = combineDateAndTime(date, schedule.departure_time_of_day, schedule.duration_minutes);
-        const route = await createRoute({
-          name: schedule.route_name,
-          location_id: schedule.location_id,
-          destination_id: schedule.destination_id,
-          distance_km: schedule.distance_km,
-          stops: schedule.stops.map((s) => ({ stop_id: s.stop_id, fare: s.fare ?? undefined })),
-        });
+
+        // One-time backfill for a schedule created before route_id existed
+        // — turns its old denormalized snapshot into a real, reusable route
+        // and pins it going forward, so this only ever runs once per schedule.
+        let routeId = schedule.route_id;
+        if (!routeId) {
+          const backfilled = await createRoute({
+            name: schedule.route_name ?? "Unknown route",
+            location_id: schedule.location_id ?? 0,
+            destination_id: schedule.destination_id ?? 0,
+            distance_km: schedule.distance_km ?? 0,
+            stops: (schedule.stops ?? []).map((s) => ({ stop_id: s.stop_id, fare: s.fare ?? undefined })),
+          });
+          routeId = backfilled.id;
+          await pool.query(`UPDATE ride_schedules SET route_id = $2 WHERE id = $1`, [schedule.id, routeId]);
+        } else {
+          const route = await getRoute(routeId);
+          if (route.status !== "active") {
+            throw new Error(`route ${routeId} is inactive`);
+          }
+        }
+
         await createRide({
-          routeId: route.id,
+          routeId,
           busId: schedule.bus_id,
           driverId: bus.driverId,
           driverName: driver.fullName,
