@@ -101,7 +101,7 @@ async function loadFullRoute(id: number): Promise<RouteDto | null> {
 // see that function's comment for why those two tables still exist
 // separately. Resolution happens before the transaction starts since it
 // does its own reads/writes against different tables, not routes/route_stops.
-export async function createRoute(input: RouteInput): Promise<RouteDto> {
+async function insertRoute(input: RouteInput): Promise<RouteDto> {
   await ensureBookingSchema();
   const [destinationId, stopIds] = await Promise.all([
     findOrCreatePlaceIdByLocation("destinations", input.destination_id),
@@ -132,6 +132,64 @@ export async function createRoute(input: RouteInput): Promise<RouteDto> {
   } finally {
     client.release();
   }
+}
+
+// A route already going the other way — matched by place name through the
+// destinations mirror table, since routes.destination_id points at
+// destinations, not locations directly (see findOrCreatePlaceIdByLocation).
+async function findReturnRouteId(originalLocationId: number, originalDestinationId: number): Promise<number | null> {
+  const pool = getBookingPool();
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT r.id FROM routes r
+     JOIN destinations d ON d.id = r.destination_id
+     WHERE r.deleted_at IS NULL
+       AND r.location_id = $1
+       AND d.name = (SELECT name FROM locations WHERE id = $2)
+     LIMIT 1`,
+    [originalDestinationId, originalLocationId],
+  );
+  return rows[0]?.id ?? null;
+}
+
+// Every route an admin creates has an opposite-direction counterpart in real
+// life (the bus that goes A -> B also comes back B -> A), so creating one
+// creates both — but as two fully independent route rows, not a linked
+// pair: each keeps its own name/status/stops and can be paused or edited
+// without touching the other. This is what lets the customer app's return-
+// trip search (searchRides matching the swapped location/destination) find
+// a result the first time an admin sets up a route, without them having to
+// remember to build the reverse leg by hand.
+export async function createRoute(input: RouteInput, options?: { createReturn?: boolean }): Promise<RouteDto> {
+  const route = await insertRoute(input);
+
+  const createReturn = options?.createReturn ?? true;
+  if (createReturn && input.location_id !== input.destination_id) {
+    try {
+      const existingReturnId = await findReturnRouteId(input.location_id, input.destination_id);
+      if (!existingReturnId) {
+        const names = await getBookingPool().query<{ id: number; name: string }>(
+          `SELECT id, name FROM locations WHERE id = ANY($1::int[])`,
+          [[input.location_id, input.destination_id]],
+        );
+        const nameById = new Map(names.rows.map((r) => [r.id, r.name]));
+        const pickupName = nameById.get(input.location_id);
+        const destinationName = nameById.get(input.destination_id);
+        await insertRoute({
+          name: pickupName && destinationName ? `${destinationName} — ${pickupName}` : `${input.name} (Return)`,
+          location_id: input.destination_id,
+          destination_id: input.location_id,
+          distance_km: input.distance_km,
+          stops: [...input.stops].reverse(),
+        });
+      }
+    } catch (err) {
+      // Best-effort — the admin's requested route was created either way;
+      // they can always add the reverse leg by hand from the Routes page.
+      console.error("[routes] failed to auto-create return route:", err);
+    }
+  }
+
+  return route;
 }
 
 export async function listRoutes(skip: number, limit: number, status?: RouteStatus): Promise<RouteDto[]> {

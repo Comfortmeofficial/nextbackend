@@ -307,13 +307,16 @@ export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSumm
         // and pins it going forward, so this only ever runs once per schedule.
         let routeId = schedule.route_id;
         if (!routeId) {
-          const backfilled = await createRoute({
-            name: schedule.route_name ?? "Unknown route",
-            location_id: schedule.location_id ?? 0,
-            destination_id: schedule.destination_id ?? 0,
-            distance_km: schedule.distance_km ?? 0,
-            stops: (schedule.stops ?? []).map((s) => ({ stop_id: s.stop_id, fare: s.fare ?? undefined })),
-          });
+          const backfilled = await createRoute(
+            {
+              name: schedule.route_name ?? "Unknown route",
+              location_id: schedule.location_id ?? 0,
+              destination_id: schedule.destination_id ?? 0,
+              distance_km: schedule.distance_km ?? 0,
+              stops: (schedule.stops ?? []).map((s) => ({ stop_id: s.stop_id, fare: s.fare ?? undefined })),
+            },
+            { createReturn: false },
+          );
           routeId = backfilled.id;
           await pool.query(`UPDATE ride_schedules SET route_id = $2 WHERE id = $1`, [schedule.id, routeId]);
         } else {
