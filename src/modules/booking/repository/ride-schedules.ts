@@ -252,13 +252,19 @@ function combineDateAndTime(dateStr: string, timeOfDay: string, durationMinutes:
   return { departureTime, arrivalTime };
 }
 
-async function rideExistsForScheduleOnDate(scheduleId: number, dateStr: string): Promise<boolean> {
+// One query per schedule instead of one per (schedule, day) — with
+// end_date-respecting generation now walking up to a year for a single
+// schedule, a per-day existence check was a query-per-day that added up to
+// enough sequential round-trips (this loop is deliberately sequential, not
+// parallel — see the note above ensureScheduledRidesGenerated) to risk
+// blowing the serverless function's execution time budget.
+async function getExistingRideDatesForSchedule(scheduleId: number): Promise<Set<string>> {
   const pool = getBookingPool();
-  const { rows } = await pool.query(
-    `SELECT 1 FROM rides WHERE schedule_id = $1 AND departure_time::date = $2 AND deleted_at IS NULL LIMIT 1`,
-    [scheduleId, dateStr],
+  const { rows } = await pool.query<{ date: string }>(
+    `SELECT DISTINCT departure_time::date::text AS date FROM rides WHERE schedule_id = $1 AND deleted_at IS NULL`,
+    [scheduleId],
   );
-  return rows.length > 0;
+  return new Set(rows.map((r) => r.date));
 }
 
 export interface GenerateRidesSummary {
@@ -329,14 +335,14 @@ export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSumm
     const scheduleHorizonDays = schedule.end_date
       ? Math.min(maxHorizonDays, Math.max(0, daysBetween(today, schedule.end_date)))
       : horizonDays;
+    const existingDates = await getExistingRideDatesForSchedule(schedule.id);
     for (let offset = 0; offset <= scheduleHorizonDays; offset++) {
       const date = addDays(today, offset);
       if (date < schedule.start_date) continue;
       if (schedule.end_date && date > schedule.end_date) continue;
       if (!schedule.days_of_week.includes(dayOfWeekUTC(date))) continue;
 
-      const exists = await rideExistsForScheduleOnDate(schedule.id, date);
-      if (exists) {
+      if (existingDates.has(date)) {
         skipped++;
         continue;
       }
