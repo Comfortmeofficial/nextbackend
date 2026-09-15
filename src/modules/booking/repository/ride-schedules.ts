@@ -225,6 +225,12 @@ function addDays(dateStr: string, days: number): string {
   return dateOnly(d);
 }
 
+function daysBetween(fromDateStr: string, toDateStr: string): number {
+  const from = new Date(`${fromDateStr}T00:00:00Z`);
+  const to = new Date(`${toDateStr}T00:00:00Z`);
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000);
+}
+
 function dayOfWeekUTC(dateStr: string): number {
   return new Date(`${dateStr}T00:00:00Z`).getUTCDay();
 }
@@ -272,23 +278,47 @@ export interface GenerateRidesSummary {
 export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSummary> {
   await ensureBookingSchema();
   const pool = getBookingPool();
-  // 30, not 7: the admin dashboard needs to see and manage a schedule's
-  // trips roughly a month out (assign buses, review fares, etc.), and this
-  // horizon is currently the *only* thing that limits how far ahead a ride
-  // exists at all — there's no separate, narrower restriction on how far
-  // out a customer can search/book. Raising it means a customer can now
-  // find/book trips up to a month out too, not just admins seeing them; if
-  // a shorter customer booking window is wanted, it needs its own check in
-  // searchRides/bookings, not a smaller value here.
+  // Rolling window for a schedule with no end_date (recurs indefinitely) —
+  // there's no natural stopping point for those, so this is the *only*
+  // thing that limits how far ahead a ride exists for them. A schedule
+  // that *does* have an end_date instead generates all the way to that
+  // date (see scheduleHorizonDays below), capped at maxHorizonDays so one
+  // run can't be asked to materialize years of rides at once. Note this is
+  // currently the only throttle on how far ahead a ride exists at all —
+  // there's no separate, narrower restriction on how far out a customer
+  // can search/book. A dedicated shorter customer booking window (if still
+  // wanted) needs its own check in searchRides/bookings, not a smaller
+  // value here.
   const horizonDays = Number(process.env.RIDE_SCHEDULE_HORIZON_DAYS ?? 30);
+  const maxHorizonDays = Number(process.env.RIDE_SCHEDULE_MAX_HORIZON_DAYS ?? 365);
   const today = dateOnly(new Date());
+  const furthestPossibleDate = addDays(today, maxHorizonDays);
 
-  const { rows: schedules } = await pool.query<RideScheduleRow>(
+  // Previously used a single param for both bounds ($1 = today+horizonDays
+  // for *both* "hasn't started yet" and "hasn't already ended" checks) —
+  // that second use was backwards: it excluded any schedule ending sooner
+  // than the horizon from generation entirely, rather than just capping how
+  // far ahead it generates. Two separate bounds now: a schedule is in scope
+  // if it starts before the furthest we'd ever generate, and hasn't already
+  // fully ended as of today.
+  const { rows: rawSchedules } = await pool.query<RideScheduleRow>(
     `SELECT * FROM ride_schedules
      WHERE status = 'active' AND deleted_at IS NULL
-       AND start_date <= $1 AND (end_date IS NULL OR end_date >= $1)`,
-    [addDays(today, horizonDays)],
+       AND start_date <= $1 AND (end_date IS NULL OR end_date >= $2)`,
+    [furthestPossibleDate, today],
   );
+  // node-postgres parses a DATE column into a JS Date object, not the plain
+  // "YYYY-MM-DD" string RideScheduleRow's type claims — every string
+  // comparison below (and daysBetween's template-literal date parsing) was
+  // silently comparing a real date string against a Date object's
+  // .toString(), which is never equal/ordered the way it looks like it
+  // should be. Normalize once, right here, so everything downstream in
+  // this function can trust start_date/end_date really are strings.
+  const schedules = rawSchedules.map((s) => ({
+    ...s,
+    start_date: dateOnly(new Date(s.start_date)),
+    end_date: s.end_date ? dateOnly(new Date(s.end_date)) : null,
+  }));
 
   let created = 0;
   let skipped = 0;
@@ -296,7 +326,10 @@ export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSumm
   const errors: string[] = [];
 
   for (const schedule of schedules) {
-    for (let offset = 0; offset <= horizonDays; offset++) {
+    const scheduleHorizonDays = schedule.end_date
+      ? Math.min(maxHorizonDays, Math.max(0, daysBetween(today, schedule.end_date)))
+      : horizonDays;
+    for (let offset = 0; offset <= scheduleHorizonDays; offset++) {
       const date = addDays(today, offset);
       if (date < schedule.start_date) continue;
       if (schedule.end_date && date > schedule.end_date) continue;
