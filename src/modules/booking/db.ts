@@ -142,6 +142,10 @@ export function ensureBookingSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_ride_schedules_route_id ON ride_schedules (route_id);
       CREATE INDEX IF NOT EXISTS idx_ride_schedules_status ON ride_schedules (status);
       CREATE INDEX IF NOT EXISTS idx_ride_schedules_deleted_at ON ride_schedules (deleted_at);
+      -- Per-stop pickup fare now lives here, set fresh per schedule (like
+      -- fare above), not baked into the shared route's stops any more — see
+      -- rides.stop_fares below for the same move on one-off rides.
+      ALTER TABLE ride_schedules ADD COLUMN IF NOT EXISTS stop_fares JSONB NOT NULL DEFAULT '[]';
 
       CREATE TABLE IF NOT EXISTS rides (
         id SERIAL PRIMARY KEY,
@@ -167,6 +171,12 @@ export function ensureBookingSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_rides_deleted_at ON rides (deleted_at);
       ALTER TABLE rides ADD COLUMN IF NOT EXISTS marshal_admin_id INTEGER;
       ALTER TABLE rides ADD COLUMN IF NOT EXISTS marshal_name VARCHAR(255);
+      -- Per-stop pickup fare, set at ride creation (like fare above) rather
+      -- than baked into the shared route's stops — a route only defines
+      -- *which* places are stops now, never their price. {stop_id, fare}[];
+      -- a stop with no entry here falls back to this ride's own route_stops
+      -- fare if that legacy route still has one, else the base fare.
+      ALTER TABLE rides ADD COLUMN IF NOT EXISTS stop_fares JSONB NOT NULL DEFAULT '[]';
       -- Which schedule generated this ride, if any — read-only provenance
       -- only (editing/pausing a schedule never touches already-generated
       -- rows), so this is never joined against for live behavior.

@@ -120,8 +120,8 @@ async function insertRoute(input: RouteInput): Promise<RouteDto> {
     const route = rows[0];
     for (let i = 0; i < input.stops.length; i++) {
       await client.query(
-        `INSERT INTO route_stops (route_id, stop_id, stop_order, fare) VALUES ($1, $2, $3, $4)`,
-        [route.id, stopIds[i], i + 1, input.stops[i].fare ?? null],
+        `INSERT INTO route_stops (route_id, stop_id, stop_order) VALUES ($1, $2, $3)`,
+        [route.id, stopIds[i], i + 1],
       );
     }
     await client.query("COMMIT");
@@ -219,8 +219,8 @@ export async function updateRoute(id: number, input: RouteInput): Promise<RouteD
     await client.query(`DELETE FROM route_stops WHERE route_id = $1`, [id]);
     for (let i = 0; i < input.stops.length; i++) {
       await client.query(
-        `INSERT INTO route_stops (route_id, stop_id, stop_order, fare) VALUES ($1, $2, $3, $4)`,
-        [id, stopIds[i], i + 1, input.stops[i].fare ?? null],
+        `INSERT INTO route_stops (route_id, stop_id, stop_order) VALUES ($1, $2, $3)`,
+        [id, stopIds[i], i + 1],
       );
     }
     await client.query("COMMIT");

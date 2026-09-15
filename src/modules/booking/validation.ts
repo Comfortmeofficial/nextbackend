@@ -20,9 +20,15 @@ export type PlaceInput = z.infer<typeof placeInputSchema>;
 
 const routeStopInputSchema = z.object({
   stop_id: requiredId,
-  // Explicit pickup fare for this stop — omitted/undefined means riders
-  // boarding here pay the ride's base fare instead.
-  fare: z.number().nonnegative().optional(),
+});
+
+// Explicit pickup fare for one of the route's stops — moved here from route
+// creation so it's set fresh per ride/schedule (like `fare` itself), not
+// baked into the shared route forever. A stop with no entry here falls back
+// to the ride's base fare.
+const stopFareInputSchema = z.object({
+  stop_id: requiredId,
+  fare: z.number().nonnegative(),
 });
 
 export const routeInputSchema = z.object({
@@ -51,6 +57,7 @@ export const rideInputSchema = z.object({
   departure_time: requiredString,
   arrival_time: z.string().optional(),
   fare: requiredNonZero,
+  stop_fares: z.array(stopFareInputSchema).default([]),
 });
 export type RideInput = z.infer<typeof rideInputSchema>;
 
@@ -71,6 +78,7 @@ export const rideScheduleInputSchema = z.object({
   bus_id: requiredId,
   route_id: requiredId,
   fare: requiredNonZero,
+  stop_fares: z.array(stopFareInputSchema).default([]),
   departure_time_of_day: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:MM"),
   duration_minutes: z.number().int().positive(),
   days_of_week: z.array(z.number().int().min(0).max(6)).min(1),

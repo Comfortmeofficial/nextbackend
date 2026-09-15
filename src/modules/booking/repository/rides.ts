@@ -4,7 +4,7 @@ import { ensureBookingSchema, getBookingPool } from "../db";
 import type { BusSeatDef } from "../external";
 import { completeBookingsForRide } from "./bookings";
 import { loadFullRoute } from "./routes";
-import type { RideDto, RideRow, RideSeatDto, RideSeatRow, RideStatus } from "../types";
+import type { RideDto, RideRow, RideSeatDto, RideSeatRow, RideStatus, RouteDto } from "../types";
 
 function toSeatDto(row: RideSeatRow): RideSeatDto {
   return {
@@ -49,6 +49,24 @@ async function loadRideForList(ride: RideRow): Promise<RideDto> {
   return rideRowToDto(ride, route!, undefined);
 }
 
+// A stop's fare is now set per-ride/schedule, not baked into the shared
+// route — overlay this ride's stop_fares onto the route's own stops list
+// (by stop_id) before handing it back, so callers can keep reading
+// route.stops[i].fare exactly as before. A stop with no override here falls
+// back to whatever the route itself already has (legacy data from before
+// this moved, or simply null -> base fare for anything created after).
+export function applyStopFares<T extends { stops: RouteDto["stops"] }>(
+  route: T,
+  stopFares: { stop_id: number; fare: number }[],
+): T {
+  if (stopFares.length === 0) return route;
+  const fareByStopId = new Map(stopFares.map((f) => [f.stop_id, f.fare]));
+  return {
+    ...route,
+    stops: route.stops.map((s) => ({ ...s, fare: fareByStopId.get(s.stop_id) ?? s.fare })),
+  };
+}
+
 function rideRowToDto(ride: RideRow, route: NonNullable<Awaited<ReturnType<typeof loadFullRoute>>>, seats?: RideSeatDto[]): RideDto {
   return {
     id: ride.id,
@@ -65,13 +83,14 @@ function rideRowToDto(ride: RideRow, route: NonNullable<Awaited<ReturnType<typeo
     total_seats: ride.total_seats,
     booked_seats: ride.booked_seats,
     status: ride.status,
-    route,
+    route: applyStopFares(route, ride.stop_fares),
     ...(seats !== undefined ? { seats } : {}),
     marshal_admin_id: ride.marshal_admin_id,
     marshal_name: ride.marshal_name,
     driver_row: ride.driver_row,
     driver_col: ride.driver_col,
     schedule_id: ride.schedule_id,
+    stop_fares: ride.stop_fares,
     created_at: ride.created_at.toISOString(),
     updated_at: ride.updated_at.toISOString(),
   };
@@ -145,6 +164,7 @@ export interface CreateRideInput {
   // The recurring schedule this ride was generated from, if any — read-only
   // provenance, never used to cascade edits back onto this row.
   scheduleId: number | null;
+  stopFares: { stop_id: number; fare: number }[];
 }
 
 // A bus can run several trips a day with no restriction on that — this only
@@ -191,8 +211,8 @@ export async function createRide(input: CreateRideInput): Promise<RideDto> {
       `INSERT INTO rides (
          route_id, bus_id, driver_id, driver_name, driver_rating, marshal_admin_id, marshal_name,
          bus_plate, bus_model, departure_time, arrival_time, fare, total_seats, status,
-         driver_row, driver_col, schedule_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'scheduled', $14, $15, $16)
+         driver_row, driver_col, schedule_id, stop_fares
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'scheduled', $14, $15, $16, $17)
        RETURNING *`,
       [
         input.routeId,
@@ -211,6 +231,7 @@ export async function createRide(input: CreateRideInput): Promise<RideDto> {
         input.driverRow,
         input.driverCol,
         input.scheduleId,
+        JSON.stringify(input.stopFares),
       ],
     );
     const ride = rows[0];

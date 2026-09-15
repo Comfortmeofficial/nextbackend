@@ -62,6 +62,12 @@ export async function POST(request: NextRequest) {
     if (route.status !== "active") {
       throw new ApiError(400, `route ${input.route_id} is inactive`);
     }
+    const routeStopIds = new Set(route.stops.map((s) => s.stop_id));
+    for (const sf of input.stop_fares) {
+      if (!routeStopIds.has(sf.stop_id)) {
+        throw new ApiError(400, `stop ${sf.stop_id} is not one of route ${route.id}'s stops`);
+      }
+    }
 
     const ride = await createRide({
       routeId: route.id,
@@ -81,6 +87,7 @@ export async function POST(request: NextRequest) {
       driverRow,
       driverCol,
       scheduleId: null,
+      stopFares: input.stop_fares,
     });
     recordAuditLog(actor, request, "CREATE", "ride", ride.id, {
       route_id: route.id,

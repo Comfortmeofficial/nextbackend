@@ -97,6 +97,7 @@ export interface RideRow {
   driver_row: number | null;
   driver_col: number | null;
   schedule_id: number | null;
+  stop_fares: { stop_id: number; fare: number }[];
   created_at: Date;
   updated_at: Date;
 }
@@ -143,6 +144,9 @@ export interface RideDto {
   total_seats: number;
   booked_seats: number;
   status: RideStatus;
+  // route.stops[].fare is already this ride's effective per-stop fare (see
+  // rideRowToDto) — stop_fares below is the same data in raw/editable form,
+  // for the admin dashboard's edit flow.
   route: RouteDto;
   seats?: RideSeatDto[];
   marshal_admin_id: number | null;
@@ -150,6 +154,7 @@ export interface RideDto {
   driver_row: number | null;
   driver_col: number | null;
   schedule_id: number | null;
+  stop_fares: { stop_id: number; fare: number }[];
   created_at: string;
   updated_at: string;
 }
@@ -174,6 +179,10 @@ export interface RideScheduleRow {
   distance_km: number | null;
   stops: { stop_id: number; fare: number | null }[] | null;
   fare: number;
+  // Per-stop pickup fare, set at schedule creation (like fare above) —
+  // carried onto every ride this schedule generates. Same shape/precedence
+  // as rides.stop_fares.
+  stop_fares: { stop_id: number; fare: number }[];
   departure_time_of_day: string;
   duration_minutes: number | null;
   days_of_week: number[];
@@ -194,6 +203,7 @@ export interface RideScheduleDto {
   distance_km: number;
   stops: { stop_id: number; fare: number | null }[];
   fare: number;
+  stop_fares: { stop_id: number; fare: number }[];
   departure_time_of_day: string;
   duration_minutes: number | null;
   days_of_week: number[];

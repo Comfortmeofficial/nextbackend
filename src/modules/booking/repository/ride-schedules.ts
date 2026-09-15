@@ -61,6 +61,14 @@ async function toDto(row: RideScheduleRow): Promise<RideScheduleDto> {
     destinationDto = destinationRows[0] ? placeDto(destinationRows[0]) : undefined;
   }
 
+  // Per-stop fare is set on the schedule itself now (see rideScheduleInputSchema),
+  // not baked into the route — override each stop's fare with this
+  // schedule's own value where one was set, same precedence as rides.
+  if (row.stop_fares.length > 0) {
+    const fareByStopId = new Map(row.stop_fares.map((f) => [f.stop_id, f.fare]));
+    stops = stops.map((s) => ({ stop_id: s.stop_id, fare: fareByStopId.get(s.stop_id) ?? s.fare }));
+  }
+
   let busPlate: string | undefined;
   let driverName: string | undefined;
   let marshalName: string | undefined;
@@ -91,6 +99,7 @@ async function toDto(row: RideScheduleRow): Promise<RideScheduleDto> {
     distance_km: distanceKm,
     stops,
     fare: row.fare,
+    stop_fares: row.stop_fares,
     departure_time_of_day: row.departure_time_of_day,
     duration_minutes: row.duration_minutes,
     days_of_week: row.days_of_week,
@@ -112,13 +121,14 @@ export async function createRideSchedule(input: RideScheduleInput): Promise<Ride
   const pool = getBookingPool();
   const { rows } = await pool.query<RideScheduleRow>(
     `INSERT INTO ride_schedules (
-       bus_id, route_id, fare, departure_time_of_day, duration_minutes, days_of_week, start_date, end_date
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       bus_id, route_id, fare, stop_fares, departure_time_of_day, duration_minutes, days_of_week, start_date, end_date
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING *`,
     [
       input.bus_id,
       input.route_id,
       input.fare,
+      JSON.stringify(input.stop_fares),
       input.departure_time_of_day,
       input.duration_minutes,
       JSON.stringify(input.days_of_week),
@@ -159,8 +169,8 @@ export async function updateRideSchedule(id: number, input: RideScheduleInput): 
   const pool = getBookingPool();
   const { rows } = await pool.query<RideScheduleRow>(
     `UPDATE ride_schedules SET
-       bus_id=$2, route_id=$3, fare=$4, departure_time_of_day=$5, duration_minutes=$6,
-       days_of_week=$7, start_date=$8, end_date=$9, updated_at=now()
+       bus_id=$2, route_id=$3, fare=$4, stop_fares=$5, departure_time_of_day=$6, duration_minutes=$7,
+       days_of_week=$8, start_date=$9, end_date=$10, updated_at=now()
      WHERE id=$1 AND deleted_at IS NULL
      RETURNING *`,
     [
@@ -168,6 +178,7 @@ export async function updateRideSchedule(id: number, input: RideScheduleInput): 
       input.bus_id,
       input.route_id,
       input.fare,
+      JSON.stringify(input.stop_fares),
       input.departure_time_of_day,
       input.duration_minutes,
       JSON.stringify(input.days_of_week),
@@ -313,13 +324,24 @@ export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSumm
               location_id: schedule.location_id ?? 0,
               destination_id: schedule.destination_id ?? 0,
               distance_km: schedule.distance_km ?? 0,
-              stops: (schedule.stops ?? []).map((s) => ({ stop_id: s.stop_id, fare: s.fare ?? undefined })),
+              stops: (schedule.stops ?? []).map((s) => ({ stop_id: s.stop_id })),
               tags: [],
             },
             { createReturn: false },
           );
           routeId = backfilled.id;
-          await pool.query(`UPDATE ride_schedules SET route_id = $2 WHERE id = $1`, [schedule.id, routeId]);
+          // The legacy snapshot's per-stop fares move onto this schedule's
+          // own stop_fares (not the new route — routes don't carry fares
+          // any more) so they aren't silently lost in the backfill.
+          const legacyStopFares = (schedule.stops ?? [])
+            .filter((s): s is { stop_id: number; fare: number } => s.fare != null)
+            .map((s) => ({ stop_id: s.stop_id, fare: s.fare }));
+          await pool.query(`UPDATE ride_schedules SET route_id = $2, stop_fares = $3 WHERE id = $1`, [
+            schedule.id,
+            routeId,
+            JSON.stringify(legacyStopFares),
+          ]);
+          schedule.stop_fares = legacyStopFares;
         } else {
           const route = await getRoute(routeId);
           if (route.status !== "active") {
@@ -345,6 +367,7 @@ export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSumm
           driverRow,
           driverCol,
           scheduleId: schedule.id,
+          stopFares: schedule.stop_fares,
         });
         created++;
       } catch (err) {

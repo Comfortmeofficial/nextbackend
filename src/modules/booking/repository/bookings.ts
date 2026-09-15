@@ -5,7 +5,7 @@ import { getUser } from "@/modules/users/repository";
 import { recordRating } from "@/modules/drivers/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import type { BookingDto, BookingRow, PassengerDto, PaymentMethod } from "../types";
-import { getRideRow, updateRideStatus } from "./rides";
+import { applyStopFares, getRideRow, updateRideStatus } from "./rides";
 import { loadFullRoute } from "./routes";
 
 async function toDto(row: BookingRow): Promise<BookingDto> {
@@ -46,12 +46,13 @@ async function toDto(row: BookingRow): Promise<BookingDto> {
           total_seats: ride.total_seats,
           booked_seats: ride.booked_seats,
           status: ride.status,
-          route: route!,
+          route: applyStopFares(route!, ride.stop_fares),
           marshal_admin_id: ride.marshal_admin_id,
           marshal_name: ride.marshal_name,
           driver_row: ride.driver_row,
           driver_col: ride.driver_col,
           schedule_id: ride.schedule_id,
+          stop_fares: ride.stop_fares,
           created_at: ride.created_at.toISOString(),
           updated_at: ride.updated_at.toISOString(),
         }
