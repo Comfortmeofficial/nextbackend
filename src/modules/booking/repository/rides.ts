@@ -517,10 +517,10 @@ export async function setBoardingCode(id: number, code: string): Promise<void> {
   await pool.query(`UPDATE rides SET boarding_code = $2, updated_at = now() WHERE id = $1`, [id, code]);
 }
 
-// Search returns rides whose route location/destination (or stops) match
-// the query. Exact destination match takes priority over partial/stop
-// matches — if any exact matches exist, partial matches aren't even
-// attempted, matching the source's early return.
+// Search returns rides whose route location/destination (or stops, or tags)
+// match the query. Exact destination match takes priority over partial/
+// stop/tag matches — if any exact matches exist, partial matches aren't
+// even attempted, matching the source's early return.
 export async function searchRides(
   locationQuery: string,
   destinationQuery: string,
@@ -572,10 +572,15 @@ async function runSearchQuery(
       const destParam = params.length;
       params.push(`%${destinationQuery.toLowerCase()}%`);
       const stopParam = params.length;
+      params.push(`%${destinationQuery.toLowerCase()}%`);
+      const tagParam = params.length;
       conditions.push(
         `(LOWER(destinations.name) LIKE LOWER($${destParam}) OR EXISTS (
            SELECT 1 FROM route_stops rs2 JOIN stops s2 ON s2.id = rs2.stop_id
            WHERE rs2.route_id = routes.id AND LOWER(s2.name) LIKE LOWER($${stopParam})
+         ) OR EXISTS (
+           SELECT 1 FROM jsonb_array_elements_text(routes.tags) AS tag
+           WHERE LOWER(tag) LIKE LOWER($${tagParam})
          ))`,
       );
     }
