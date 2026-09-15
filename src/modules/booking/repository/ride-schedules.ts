@@ -272,7 +272,15 @@ export interface GenerateRidesSummary {
 export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSummary> {
   await ensureBookingSchema();
   const pool = getBookingPool();
-  const horizonDays = Number(process.env.RIDE_SCHEDULE_HORIZON_DAYS ?? 7);
+  // 30, not 7: the admin dashboard needs to see and manage a schedule's
+  // trips roughly a month out (assign buses, review fares, etc.), and this
+  // horizon is currently the *only* thing that limits how far ahead a ride
+  // exists at all — there's no separate, narrower restriction on how far
+  // out a customer can search/book. Raising it means a customer can now
+  // find/book trips up to a month out too, not just admins seeing them; if
+  // a shorter customer booking window is wanted, it needs its own check in
+  // searchRides/bookings, not a smaller value here.
+  const horizonDays = Number(process.env.RIDE_SCHEDULE_HORIZON_DAYS ?? 30);
   const today = dateOnly(new Date());
 
   const { rows: schedules } = await pool.query<RideScheduleRow>(
