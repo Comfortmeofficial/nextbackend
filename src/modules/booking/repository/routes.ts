@@ -79,6 +79,7 @@ async function loadFullRoute(id: number): Promise<RouteDto | null> {
       : {}),
     ...(route.google_distance_km != null ? { google_distance_km: route.google_distance_km } : {}),
     status: route.status,
+    tags: route.tags,
     location: locationRows[0] ? placeDto(locationRows[0]) : ({} as ReturnType<typeof placeDto>),
     destination: destinationRows[0] ? placeDto(destinationRows[0]) : ({} as ReturnType<typeof placeDto>),
     stops,
@@ -113,8 +114,8 @@ async function insertRoute(input: RouteInput): Promise<RouteDto> {
   try {
     await client.query("BEGIN");
     const { rows } = await client.query<RouteRow>(
-      `INSERT INTO routes (name, location_id, destination_id, distance) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [input.name, input.location_id, destinationId, input.distance_km],
+      `INSERT INTO routes (name, location_id, destination_id, distance, tags) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [input.name, input.location_id, destinationId, input.distance_km, JSON.stringify(input.tags)],
     );
     const route = rows[0];
     for (let i = 0; i < input.stops.length; i++) {
@@ -180,6 +181,7 @@ export async function createRoute(input: RouteInput, options?: { createReturn?: 
           destination_id: input.location_id,
           distance_km: input.distance_km,
           stops: [...input.stops].reverse(),
+          tags: input.tags,
         });
       }
     } catch (err) {
@@ -190,6 +192,45 @@ export async function createRoute(input: RouteInput, options?: { createReturn?: 
   }
 
   return route;
+}
+
+// Full edit — replaces name/location/destination/distance/tags/stops in one
+// go, same "unconditional full-row save" semantics as PlaceRepo.update (no
+// partial-update support). Does not touch status or re-trigger the
+// auto-return-route creation from createRoute — editing an existing route
+// never spawns a new one.
+export async function updateRoute(id: number, input: RouteInput): Promise<RouteDto> {
+  await ensureBookingSchema();
+  await getRoute(id);
+
+  const [destinationId, stopIds] = await Promise.all([
+    findOrCreatePlaceIdByLocation("destinations", input.destination_id),
+    Promise.all(input.stops.map((s) => findOrCreatePlaceIdByLocation("stops", s.stop_id))),
+  ]);
+
+  const pool = getBookingPool();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `UPDATE routes SET name = $2, location_id = $3, destination_id = $4, distance = $5, tags = $6, updated_at = now() WHERE id = $1`,
+      [id, input.name, input.location_id, destinationId, input.distance_km, JSON.stringify(input.tags)],
+    );
+    await client.query(`DELETE FROM route_stops WHERE route_id = $1`, [id]);
+    for (let i = 0; i < input.stops.length; i++) {
+      await client.query(
+        `INSERT INTO route_stops (route_id, stop_id, stop_order, fare) VALUES ($1, $2, $3, $4)`,
+        [id, stopIds[i], i + 1, input.stops[i].fare ?? null],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw new ApiError(500, err instanceof Error ? err.message : String(err));
+  } finally {
+    client.release();
+  }
+  return (await loadFullRoute(id))!;
 }
 
 export async function listRoutes(skip: number, limit: number, status?: RouteStatus): Promise<RouteDto[]> {

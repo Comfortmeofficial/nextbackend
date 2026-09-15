@@ -34,6 +34,7 @@ export interface RouteRow {
   estimated_duration_minutes: number | null;
   google_distance_km: number | null;
   status: RouteStatus;
+  tags: string[];
   created_at: Date;
   updated_at: Date;
 }
@@ -58,6 +59,7 @@ export interface RouteDto {
   estimated_duration_minutes?: number;
   google_distance_km?: number;
   status: RouteStatus;
+  tags: string[];
   location: PlaceDto;
   destination: PlaceDto;
   stops: RouteStopDto[];

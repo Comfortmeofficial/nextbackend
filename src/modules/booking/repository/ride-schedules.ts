@@ -314,6 +314,7 @@ export async function ensureScheduledRidesGenerated(): Promise<GenerateRidesSumm
               destination_id: schedule.destination_id ?? 0,
               distance_km: schedule.distance_km ?? 0,
               stops: (schedule.stops ?? []).map((s) => ({ stop_id: s.stop_id, fare: s.fare ?? undefined })),
+              tags: [],
             },
             { createReturn: false },
           );

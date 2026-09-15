@@ -84,6 +84,10 @@ export function ensureBookingSchema(): Promise<void> {
       ALTER TABLE routes DROP CONSTRAINT IF EXISTS routes_status_check;
       ALTER TABLE routes ADD CONSTRAINT routes_status_check CHECK (status IN ('active', 'inactive'));
       CREATE INDEX IF NOT EXISTS idx_routes_status ON routes (status);
+      -- Free-form admin labels (e.g. "express", "peak-hour") instead of
+      -- baking a disambiguator into the route name itself.
+      ALTER TABLE routes ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]';
+      CREATE INDEX IF NOT EXISTS idx_routes_tags ON routes USING GIN (tags);
 
       CREATE TABLE IF NOT EXISTS route_stops (
         id SERIAL PRIMARY KEY,

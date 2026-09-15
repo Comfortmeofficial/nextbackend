@@ -31,6 +31,7 @@ export const routeInputSchema = z.object({
   destination_id: requiredId,
   distance_km: z.number().default(0),
   stops: z.array(routeStopInputSchema).default([]),
+  tags: z.array(z.string()).default([]),
 });
 export type RouteInput = z.infer<typeof routeInputSchema>;
 

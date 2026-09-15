@@ -2,17 +2,34 @@ import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/http-errors";
 import { OPS_ROLES, requireAdminAuth } from "@/modules/admin/guard";
 import { recordAuditLog } from "@/modules/admin/audit";
-import { deleteRoute, getRoute } from "@/modules/booking/repository/routes";
+import { deleteRoute, getRoute, updateRoute } from "@/modules/booking/repository/routes";
 import { parseBookingId } from "@/modules/booking/util";
+import { routeInputSchema } from "@/modules/booking/validation";
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET /api/v1/routes/{id} — note: no PUT exists for routes in the source.
+// GET /api/v1/routes/{id}
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const id = parseBookingId((await params).id);
     if (typeof id !== "number") return id;
     const route = await getRoute(id);
+    return NextResponse.json(route);
+  } catch (error) {
+    return handleRouteError(error);
+  }
+}
+
+// PUT /api/v1/routes/{id} — full replace of name/location/destination/
+// distance/tags/stops. Status is edited separately via PATCH .../status.
+export async function PUT(request: NextRequest, { params }: Params) {
+  try {
+    const actor = await requireAdminAuth(request, OPS_ROLES);
+    const id = parseBookingId((await params).id);
+    if (typeof id !== "number") return id;
+    const body = routeInputSchema.parse(await request.json());
+    const route = await updateRoute(id, body);
+    recordAuditLog(actor, request, "UPDATE", "route", id, body);
     return NextResponse.json(route);
   } catch (error) {
     return handleRouteError(error);
