@@ -4,7 +4,7 @@ import { ensureBookingSchema, getBookingPool } from "../db";
 import { fetchBusInfo, fetchDriverInfo, fetchMarshalInfo } from "../external";
 import type { PlaceRow, RideScheduleDto, RideScheduleRow, RideScheduleStatus } from "../types";
 import type { RideScheduleInput } from "../validation";
-import { createRoute, getRoute } from "./routes";
+import { createRoute, getRoute, loadFullRoute } from "./routes";
 import { createRide, seatDefsFromBusSeats } from "./rides";
 
 function placeDto(row: PlaceRow) {
@@ -24,9 +24,14 @@ async function toDto(row: RideScheduleRow): Promise<RideScheduleDto> {
 
   // route_id is the live reference for schedules created/edited after
   // Routes became reusable — its own name/location/destination/distance/
-  // stops are authoritative. Older rows have no route_id at all; those fall
-  // back to the denormalized snapshot columns captured back when this
-  // schedule was created (see the note on RideScheduleRow).
+  // stops are authoritative. Older rows have no route_id at all, and a
+  // route_id can also now point at a route that's since been deleted (the
+  // Routes page got a real Delete in addition to Active/Inactive) — both
+  // cases fall back to the denormalized snapshot columns captured back when
+  // this schedule was created (see the note on RideScheduleRow). This must
+  // never throw: one schedule with a stale route_id used to take down the
+  // *entire* list (toDto ran inside Promise.all with nothing catching a
+  // single row's failure), 404-ing GET /ride-schedules outright.
   let routeName: string;
   let locationId: number;
   let destinationId: number;
@@ -35,8 +40,8 @@ async function toDto(row: RideScheduleRow): Promise<RideScheduleDto> {
   let locationDto: ReturnType<typeof placeDto> | undefined;
   let destinationDto: ReturnType<typeof placeDto> | undefined;
 
-  if (row.route_id) {
-    const route = await getRoute(row.route_id);
+  const route = row.route_id ? await loadFullRoute(row.route_id) : null;
+  if (route) {
     routeName = route.name;
     locationId = route.location_id;
     destinationId = route.destination_id;
