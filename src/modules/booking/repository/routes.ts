@@ -303,4 +303,41 @@ export async function updateRouteEta(
   );
 }
 
-export { loadFullRoute };
+// A ride/booking/package can outlive the route it was created against —
+// routes are now genuinely deletable (see deleteRoute above), and nothing
+// cascades from that to what already referenced it, by design. Every
+// caller that embeds a route inside a ride's response used to do
+// `route!` on loadFullRoute's result, silently shipping a bare `null`
+// whenever the route was gone — which crashed client code (mobile and
+// admin alike) expecting a real object with `.location`/`.stops`/etc.
+// This stands in for that instead: a clearly-marked, structurally valid
+// placeholder, so "route no longer exists" degrades to a label rather
+// than a crash.
+function placeholderRoute(routeId: number): RouteDto {
+  const now = new Date().toISOString();
+  const unknownPlace = {
+    id: 0,
+    name: "Unknown",
+    state: "",
+    latitude: 0,
+    longitude: 0,
+    created_at: now,
+    updated_at: now,
+  };
+  return {
+    id: routeId,
+    name: "Route no longer available",
+    location_id: 0,
+    destination_id: 0,
+    distance_km: 0,
+    status: "inactive",
+    tags: [],
+    location: unknownPlace,
+    destination: unknownPlace,
+    stops: [],
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+export { loadFullRoute, placeholderRoute };

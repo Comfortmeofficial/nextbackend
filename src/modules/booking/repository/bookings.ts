@@ -6,11 +6,11 @@ import { recordRating } from "@/modules/drivers/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import type { BookingDto, BookingRow, PassengerDto, PaymentMethod } from "../types";
 import { applyStopFares, getRideRow, updateRideStatus } from "./rides";
-import { loadFullRoute } from "./routes";
+import { loadFullRoute, placeholderRoute } from "./routes";
 
 async function toDto(row: BookingRow): Promise<BookingDto> {
   const ride = await getRideRow(row.ride_id);
-  const route = ride ? await loadFullRoute(ride.route_id) : null;
+  const route = ride ? (await loadFullRoute(ride.route_id)) ?? placeholderRoute(ride.route_id) : null;
   return {
     id: row.id,
     reference: row.reference,
@@ -46,6 +46,11 @@ async function toDto(row: BookingRow): Promise<BookingDto> {
           total_seats: ride.total_seats,
           booked_seats: ride.booked_seats,
           status: ride.status,
+          // Non-null assertion is honest here (unlike the removed pre-fix
+          // version): `route` is only read in this ride-truthy branch, and
+          // is now always a real RouteDto or placeholderRoute's stand-in,
+          // never actually null — TS just can't correlate that across the
+          // two independent `ride ? … : null` ternaries.
           route: applyStopFares(route!, ride.stop_fares),
           marshal_admin_id: ride.marshal_admin_id,
           marshal_name: ride.marshal_name,

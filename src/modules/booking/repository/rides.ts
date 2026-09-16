@@ -3,7 +3,7 @@ import { setDriverTripStatus } from "@/modules/drivers/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import type { BusSeatDef } from "../external";
 import { completeBookingsForRide } from "./bookings";
-import { loadFullRoute } from "./routes";
+import { loadFullRoute, placeholderRoute } from "./routes";
 import type { RideDto, RideRow, RideSeatDto, RideSeatRow, RideStatus, RouteDto } from "../types";
 
 function toSeatDto(row: RideSeatRow): RideSeatDto {
@@ -37,16 +37,16 @@ async function loadFullRide(id: number): Promise<RideDto | null> {
   ]);
   const ride = rows[0];
   if (!ride) return null;
-  const route = await loadFullRoute(ride.route_id);
+  const route = (await loadFullRoute(ride.route_id)) ?? placeholderRoute(ride.route_id);
   const seats = await getSeats(ride.id);
-  return rideRowToDto(ride, route!, seats);
+  return rideRowToDto(ride, route, seats);
 }
 
 // Matches List/Search: Route preloaded, Seats NOT — the `seats` key is
 // omitted entirely from these responses (Go's omitempty on a nil slice).
 async function loadRideForList(ride: RideRow): Promise<RideDto> {
-  const route = await loadFullRoute(ride.route_id);
-  return rideRowToDto(ride, route!, undefined);
+  const route = (await loadFullRoute(ride.route_id)) ?? placeholderRoute(ride.route_id);
+  return rideRowToDto(ride, route, undefined);
 }
 
 // A stop's fare is now set per-ride/schedule, not baked into the shared
