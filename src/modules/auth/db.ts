@@ -76,6 +76,17 @@ export function ensureAuthSchema(): Promise<void> {
         preference   VARCHAR(20),
         created_at   TIMESTAMPTZ DEFAULT NOW()
       );
+      -- Admin CRUD (edit/delete an entry) needs pause-not-delete semantics
+      -- like every other soft-deletable table here, and the plain UNIQUE on
+      -- email needs to become a partial index that excludes deleted rows
+      -- first — otherwise re-joining (or an admin re-adding) an email that
+      -- belongs to a *deleted* entry would fail as "already exists", the
+      -- same bug already fixed this way on admins/users/drivers/locations.
+      ALTER TABLE waitlist_entries ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+      ALTER TABLE waitlist_entries ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+      ALTER TABLE waitlist_entries DROP CONSTRAINT IF EXISTS waitlist_entries_email_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_waitlist_entries_email_active ON waitlist_entries (email) WHERE deleted_at IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_waitlist_entries_deleted_at ON waitlist_entries (deleted_at);
     `)
       .then(() => undefined)
       .catch((err) => {

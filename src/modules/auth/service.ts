@@ -344,7 +344,7 @@ export interface WaitlistInput {
 export async function joinWaitlist(data: WaitlistInput) {
   await ensureAuthSchema();
   const email = normalizeEmail(data.email);
-  const existing = await query("SELECT id FROM waitlist_entries WHERE email = $1", [email]);
+  const existing = await query("SELECT id FROM waitlist_entries WHERE email = $1 AND deleted_at IS NULL", [email]);
   if ((existing.rowCount ?? 0) > 0) {
     throw new AuthError(409, "You're already on the waitlist");
   }
@@ -380,17 +380,77 @@ export interface WaitlistEntryDto {
   challenge: string | null;
   preference: string | null;
   created_at: string;
+  updated_at: string;
+}
+
+const WAITLIST_SELECT_COLUMNS =
+  "id, full_name, email, phone, city, occupation, commute_days, challenge, preference, created_at, updated_at";
+
+function toWaitlistEntryDto(row: Record<string, unknown>): WaitlistEntryDto {
+  return {
+    ...row,
+    created_at: (row.created_at as Date).toISOString(),
+    updated_at: (row.updated_at as Date).toISOString(),
+  } as WaitlistEntryDto;
 }
 
 export async function listWaitlist(skip: number, limit: number): Promise<WaitlistEntryDto[]> {
   await ensureAuthSchema();
   const res = await query(
-    `SELECT id, full_name, email, phone, city, occupation, commute_days, challenge, preference, created_at
-     FROM waitlist_entries ORDER BY created_at DESC OFFSET $1 LIMIT $2`,
+    `SELECT ${WAITLIST_SELECT_COLUMNS} FROM waitlist_entries
+     WHERE deleted_at IS NULL ORDER BY created_at DESC OFFSET $1 LIMIT $2`,
     [skip, limit],
   );
-  return res.rows.map((row) => ({
-    ...row,
-    created_at: row.created_at.toISOString(),
-  }));
+  return res.rows.map(toWaitlistEntryDto);
+}
+
+export async function getWaitlistEntry(id: number): Promise<WaitlistEntryDto> {
+  await ensureAuthSchema();
+  const res = await query(
+    `SELECT ${WAITLIST_SELECT_COLUMNS} FROM waitlist_entries WHERE id = $1 AND deleted_at IS NULL`,
+    [id],
+  );
+  if (res.rowCount === 0) {
+    throw new AuthError(404, "Waitlist entry not found");
+  }
+  return toWaitlistEntryDto(res.rows[0]);
+}
+
+// Unconditional full-row save (every field overwritten), same convention as
+// this app's other admin-edit endpoints — no partial-update semantics.
+export async function updateWaitlistEntry(id: number, data: WaitlistInput): Promise<WaitlistEntryDto> {
+  await ensureAuthSchema();
+  await getWaitlistEntry(id); // 404s cleanly if missing/already deleted
+  const email = normalizeEmail(data.email);
+  const dupe = await query(
+    "SELECT id FROM waitlist_entries WHERE email = $1 AND id != $2 AND deleted_at IS NULL",
+    [email, id],
+  );
+  if ((dupe.rowCount ?? 0) > 0) {
+    throw new AuthError(409, "Another waitlist entry already uses that email");
+  }
+  const res = await query(
+    `UPDATE waitlist_entries SET
+       full_name = $2, email = $3, phone = $4, city = $5, occupation = $6,
+       commute_days = $7, challenge = $8, preference = $9, updated_at = now()
+     WHERE id = $1 AND deleted_at IS NULL
+     RETURNING ${WAITLIST_SELECT_COLUMNS}`,
+    [
+      id,
+      data.full_name,
+      email,
+      data.phone ?? null,
+      data.city ?? null,
+      data.occupation ?? null,
+      data.commute_days ?? null,
+      data.challenge ?? null,
+      data.preference ?? null,
+    ],
+  );
+  return toWaitlistEntryDto(res.rows[0]);
+}
+
+export async function deleteWaitlistEntry(id: number): Promise<void> {
+  await ensureAuthSchema();
+  await query("UPDATE waitlist_entries SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL", [id]);
 }
