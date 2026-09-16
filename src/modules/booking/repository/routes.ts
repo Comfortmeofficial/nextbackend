@@ -269,9 +269,29 @@ export async function getRoute(id: number): Promise<RouteDto> {
   return route;
 }
 
+// Deleting a route never cascades to rides that already reference it (by
+// design — see placeholderRoute above), but that's exactly why this must
+// refuse to delete one with real upcoming trips still depending on it: an
+// admin's next visit to Routes shouldn't be able to strand a paying
+// customer's already-booked trip with no route info, which is precisely
+// what happened before placeholderRoute existed (a customer's confirmed
+// booking silently started showing "Unknown -> Unknown").
 export async function deleteRoute(id: number): Promise<void> {
   await ensureBookingSchema();
   const pool = getBookingPool();
+  const { rows } = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) FROM rides
+     WHERE route_id = $1 AND deleted_at IS NULL
+       AND status NOT IN ('cancelled', 'completed') AND departure_time > now()`,
+    [id],
+  );
+  const upcomingRideCount = Number(rows[0].count);
+  if (upcomingRideCount > 0) {
+    throw new ApiError(
+      409,
+      `Cannot delete route ${id}: it still has ${upcomingRideCount} upcoming ride(s) scheduled. Cancel or reassign those first, or mark the route inactive instead.`,
+    );
+  }
   await pool.query(`UPDATE routes SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
 }
 
