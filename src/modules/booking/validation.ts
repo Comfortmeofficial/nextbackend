@@ -187,3 +187,11 @@ export const listQuerySchema = z.object({
   skip: z.coerce.number().int().nonnegative().default(0),
   limit: z.coerce.number().int().positive().default(100),
 });
+
+// GET /rides only. within_days narrows the list to rides that haven't
+// departed yet and depart inside the next N days — the customer app's
+// booking window. Omitted (the admin dashboard's case) means no date bound at
+// all: admins manage the whole schedule horizon, customers only see a week.
+export const rideListQuerySchema = listQuerySchema.extend({
+  within_days: z.coerce.number().int().positive().max(365).optional(),
+});

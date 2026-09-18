@@ -300,7 +300,12 @@ export async function resyncRideSeatsForBus(busId: number, seats: BusSeatDef[] |
   return resynced;
 }
 
-export async function listRides(skip: number, limit: number, status?: string): Promise<RideDto[]> {
+export async function listRides(
+  skip: number,
+  limit: number,
+  status?: string,
+  withinDays?: number,
+): Promise<RideDto[]> {
   await ensureBookingSchema();
   const pool = getBookingPool();
   const params: unknown[] = [];
@@ -308,6 +313,13 @@ export async function listRides(skip: number, limit: number, status?: string): P
   if (status) {
     params.push(status);
     where += ` AND status = $${params.length}`;
+  }
+  // Also drops rides that already departed but are still marked
+  // 'scheduled' (the lifecycle isn't auto-advanced after departure), which
+  // otherwise sort first and eat into the page limit ahead of anything real.
+  if (withinDays !== undefined) {
+    params.push(withinDays);
+    where += ` AND departure_time >= now() AND departure_time < now() + ($${params.length}::int * interval '1 day')`;
   }
   params.push(skip, limit);
   const { rows } = await pool.query<RideRow>(

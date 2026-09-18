@@ -5,7 +5,7 @@ import { recordAuditLog } from "@/modules/admin/audit";
 import { fetchBusInfo, fetchDriverInfo, fetchMarshalInfo } from "@/modules/booking/external";
 import { createRide, listRides, seatDefsFromBusSeats } from "@/modules/booking/repository/rides";
 import { getRoute } from "@/modules/booking/repository/routes";
-import { listQuerySchema, rideInputSchema } from "@/modules/booking/validation";
+import { rideInputSchema, rideListQuerySchema } from "@/modules/booking/validation";
 import { assertDriverAssignable } from "@/modules/drivers/repository";
 
 function parseRfc3339(value: string, field: string): Date {
@@ -100,12 +100,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/v1/rides?skip=0&limit=100&status=
+// GET /api/v1/rides?skip=0&limit=100&status=&within_days=
 export async function GET(request: NextRequest) {
   try {
-    const { skip, limit } = listQuerySchema.parse(Object.fromEntries(request.nextUrl.searchParams));
+    const { skip, limit, within_days } = rideListQuerySchema.parse(Object.fromEntries(request.nextUrl.searchParams));
     const status = request.nextUrl.searchParams.get("status") ?? undefined;
-    const rides = await listRides(skip, limit, status);
+    const rides = await listRides(skip, limit, status, within_days);
     return NextResponse.json(rides);
   } catch (error) {
     return handleRouteError(error);
