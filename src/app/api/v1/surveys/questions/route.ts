@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   try {
     await requireAdminAuth(request, FULL_ACCESS);
     const input = surveyQuestionInputSchema.parse(await request.json());
-    return NextResponse.json(await createSurveyQuestion(input.question, input.sort_order, input.is_active), { status: 201 });
+    return NextResponse.json(await createSurveyQuestion(input.question, input.question_type, input.options, input.sort_order, input.is_active), { status: 201 });
   } catch (error) {
     return handleRouteError(error);
   }

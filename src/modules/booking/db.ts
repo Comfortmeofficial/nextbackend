@@ -238,11 +238,15 @@ export function ensureBookingSchema(): Promise<void> {
       CREATE TABLE IF NOT EXISTS survey_questions (
         id SERIAL PRIMARY KEY,
         question TEXT NOT NULL,
+        question_type VARCHAR(30) NOT NULL DEFAULT 'text',
+        options JSONB NOT NULL DEFAULT '[]'::jsonb,
         is_active BOOLEAN NOT NULL DEFAULT true,
         sort_order INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
+      ALTER TABLE survey_questions ADD COLUMN IF NOT EXISTS question_type VARCHAR(30) NOT NULL DEFAULT 'text';
+      ALTER TABLE survey_questions ADD COLUMN IF NOT EXISTS options JSONB NOT NULL DEFAULT '[]'::jsonb;
       CREATE INDEX IF NOT EXISTS idx_survey_questions_active_order
         ON survey_questions (is_active, sort_order, id);
 

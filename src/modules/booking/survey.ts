@@ -5,6 +5,8 @@ import { getBookingRow } from "./repository/bookings";
 export interface SurveyQuestion {
   id: number;
   question: string;
+  question_type: "text" | "multiple_choice" | "rating";
+  options: string[];
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -24,6 +26,8 @@ export interface SurveyResponse {
 interface SurveyQuestionRow {
   id: number;
   question: string;
+  question_type: "text" | "multiple_choice" | "rating";
+  options: string[];
   is_active: boolean;
   sort_order: number;
   created_at: Date;
@@ -34,6 +38,8 @@ function questionDto(row: SurveyQuestionRow): SurveyQuestion {
   return {
     id: row.id,
     question: row.question,
+    question_type: row.question_type,
+    options: row.options ?? [],
     is_active: row.is_active,
     sort_order: row.sort_order,
     created_at: row.created_at.toISOString(),
@@ -44,7 +50,7 @@ function questionDto(row: SurveyQuestionRow): SurveyQuestion {
 export async function listSurveyQuestions(includeInactive = false): Promise<SurveyQuestion[]> {
   await ensureBookingSchema();
   const { rows } = await getBookingPool().query(
-    `SELECT id, question, is_active, sort_order, created_at, updated_at
+    `SELECT id, question, question_type, options, is_active, sort_order, created_at, updated_at
        FROM survey_questions
       ${includeInactive ? "" : "WHERE is_active = true"}
       ORDER BY sort_order ASC, id ASC`,
@@ -52,25 +58,25 @@ export async function listSurveyQuestions(includeInactive = false): Promise<Surv
   return rows.map(questionDto);
 }
 
-export async function createSurveyQuestion(question: string, sortOrder: number, isActive: boolean): Promise<SurveyQuestion> {
+export async function createSurveyQuestion(question: string, questionType: SurveyQuestion["question_type"], options: string[], sortOrder: number, isActive: boolean): Promise<SurveyQuestion> {
   await ensureBookingSchema();
   const { rows } = await getBookingPool().query(
-    `INSERT INTO survey_questions (question, sort_order, is_active)
-     VALUES ($1, $2, $3)
-     RETURNING id, question, is_active, sort_order, created_at, updated_at`,
-    [question, sortOrder, isActive],
+    `INSERT INTO survey_questions (question, question_type, options, sort_order, is_active)
+     VALUES ($1, $2, $3::jsonb, $4, $5)
+     RETURNING id, question, question_type, options, is_active, sort_order, created_at, updated_at`,
+    [question, questionType, JSON.stringify(options), sortOrder, isActive],
   );
   return questionDto(rows[0]);
 }
 
-export async function updateSurveyQuestion(id: number, question: string, sortOrder: number, isActive: boolean): Promise<SurveyQuestion> {
+export async function updateSurveyQuestion(id: number, question: string, questionType: SurveyQuestion["question_type"], options: string[], sortOrder: number, isActive: boolean): Promise<SurveyQuestion> {
   await ensureBookingSchema();
   const { rows } = await getBookingPool().query(
     `UPDATE survey_questions
-        SET question = $2, sort_order = $3, is_active = $4, updated_at = now()
+        SET question = $2, question_type = $3, options = $4::jsonb, sort_order = $5, is_active = $6, updated_at = now()
       WHERE id = $1
-      RETURNING id, question, is_active, sort_order, created_at, updated_at`,
-    [id, question, sortOrder, isActive],
+      RETURNING id, question, question_type, options, is_active, sort_order, created_at, updated_at`,
+    [id, question, questionType, JSON.stringify(options), sortOrder, isActive],
   );
   if (!rows[0]) throw new ApiError(404, "Survey question not found");
   return questionDto(rows[0]);

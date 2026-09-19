@@ -11,7 +11,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     await requireAdminAuth(request, FULL_ACCESS);
     const id = Number((await params).id);
     const input = surveyQuestionInputSchema.parse(await request.json());
-    return NextResponse.json(await updateSurveyQuestion(id, input.question, input.sort_order, input.is_active));
+    return NextResponse.json(await updateSurveyQuestion(id, input.question, input.question_type, input.options, input.sort_order, input.is_active));
   } catch (error) {
     return handleRouteError(error);
   }
