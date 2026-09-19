@@ -279,17 +279,25 @@ export async function getRoute(id: number): Promise<RouteDto> {
 export async function deleteRoute(id: number): Promise<void> {
   await ensureBookingSchema();
   const pool = getBookingPool();
+  // A future-dated ride isn't the only thing worth protecting: the ride
+  // lifecycle is never auto-advanced after departure (see the same note in
+  // the mobile app), so a boarding/active trip can sit well past its
+  // departure_time indefinitely — a rider could be on that bus right now.
+  // departure_time > now() alone missed exactly that case once already
+  // (a since-deleted route whose only dependent ride was stuck in
+  // 'boarding' from weeks earlier silently broke that rider's Active Trip
+  // card instead of blocking the delete).
   const { rows } = await pool.query<{ count: string }>(
     `SELECT COUNT(*) FROM rides
      WHERE route_id = $1 AND deleted_at IS NULL
-       AND status NOT IN ('cancelled', 'completed') AND departure_time > now()`,
+       AND (status IN ('boarding', 'active') OR (status = 'scheduled' AND departure_time > now()))`,
     [id],
   );
-  const upcomingRideCount = Number(rows[0].count);
-  if (upcomingRideCount > 0) {
+  const blockingRideCount = Number(rows[0].count);
+  if (blockingRideCount > 0) {
     throw new ApiError(
       409,
-      `Cannot delete route ${id}: it still has ${upcomingRideCount} upcoming ride(s) scheduled. Cancel or reassign those first, or mark the route inactive instead.`,
+      `Cannot delete route ${id}: it still has ${blockingRideCount} upcoming or in-progress ride(s). Cancel or reassign those first, or mark the route inactive instead.`,
     );
   }
   await pool.query(`UPDATE routes SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
