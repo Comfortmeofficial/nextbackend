@@ -235,6 +235,27 @@ export function ensureBookingSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_bookings_deleted_at ON bookings (deleted_at);
       CREATE INDEX IF NOT EXISTS idx_bookings_pickup_stop_id ON bookings (pickup_stop_id);
 
+      CREATE TABLE IF NOT EXISTS survey_questions (
+        id SERIAL PRIMARY KEY,
+        question TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_survey_questions_active_order
+        ON survey_questions (is_active, sort_order, id);
+
+      CREATE TABLE IF NOT EXISTS survey_responses (
+        id SERIAL PRIMARY KEY,
+        booking_id INTEGER NOT NULL UNIQUE REFERENCES bookings(id),
+        ride_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+        submitted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_survey_responses_ride_id ON survey_responses (ride_id);
+
       CREATE TABLE IF NOT EXISTS rentals (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
