@@ -49,3 +49,46 @@ export async function customerHasBookingOnRide(rideId: number, userId: number): 
   );
   return rows.length > 0;
 }
+
+export interface ChatThreadDto {
+  user_id: number;
+  last_message: string;
+  last_sender_type: ChatSenderType;
+  last_at: string;
+  // Only messages the customer sent — the marshal's own replies never count
+  // as "unread" for them, so the admin UI compares this against how many it
+  // has already seen per thread.
+  customer_message_count: number;
+}
+
+// One row per rider who has written on this ride, for the marshal's inbox:
+// who has messaged, the latest line, and how many customer messages exist.
+export async function listChatThreadsForRide(rideId: number): Promise<ChatThreadDto[]> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const { rows } = await pool.query<{
+    user_id: number;
+    last_message: string;
+    last_sender_type: ChatSenderType;
+    last_at: Date;
+    customer_message_count: string;
+  }>(
+    `SELECT user_id,
+            (ARRAY_AGG(message ORDER BY created_at DESC, id DESC))[1] AS last_message,
+            (ARRAY_AGG(sender_type ORDER BY created_at DESC, id DESC))[1] AS last_sender_type,
+            MAX(created_at) AS last_at,
+            COUNT(*) FILTER (WHERE sender_type = 'customer') AS customer_message_count
+     FROM trip_chat_messages
+     WHERE ride_id = $1
+     GROUP BY user_id
+     ORDER BY MAX(created_at) DESC`,
+    [rideId],
+  );
+  return rows.map((r) => ({
+    user_id: r.user_id,
+    last_message: r.last_message,
+    last_sender_type: r.last_sender_type,
+    last_at: r.last_at.toISOString(),
+    customer_message_count: parseInt(r.customer_message_count, 10),
+  }));
+}
