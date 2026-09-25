@@ -28,6 +28,7 @@ async function toDto(row: BookingRow): Promise<BookingDto> {
     pickup_stop_id: row.pickup_stop_id,
     rating: row.rating,
     rating_comment: row.rating_comment,
+    no_show_at: row.no_show_at ? row.no_show_at.toISOString() : null,
     // Nested ride never carries `seats` here — the source's booking
     // preloads (Ride.Route.*) never touch Ride.Seats either.
     ride: ride
@@ -283,6 +284,7 @@ export async function listPassengersForRide(rideId: number): Promise<PassengerDt
         seat_number: row.seat_number,
         status: row.status,
         is_on_board: row.is_on_board,
+        no_show_at: row.no_show_at ? row.no_show_at.toISOString() : null,
         pickup_stop_id: row.pickup_stop_id,
         user_id: row.user_id,
         first_name: user?.first_name ?? "Unknown",
@@ -298,7 +300,12 @@ export async function listPassengersForRide(rideId: number): Promise<PassengerDt
 export async function markOnBoard(id: number): Promise<BookingDto> {
   await ensureBookingSchema();
   const pool = getBookingPool();
-  await pool.query(`UPDATE bookings SET is_on_board = true, updated_at = now() WHERE id = $1`, [id]);
+  // Boarding always wins over an earlier no-show call — a late arrival
+  // shouldn't stay flagged as one just because a marshal called it early.
+  await pool.query(
+    `UPDATE bookings SET is_on_board = true, no_show_at = NULL, updated_at = now() WHERE id = $1`,
+    [id],
+  );
   const booking = await getBooking(id);
   // First boarding on a ride starts it — closes the gap where a ride's own
   // status was otherwise a fully separate, easy-to-forget ops-admin action
@@ -310,6 +317,20 @@ export async function markOnBoard(id: number): Promise<BookingDto> {
     await updateRideStatus(ride.id, "active");
   }
   return booking;
+}
+
+// Marshal-recorded: this booked passenger never boarded. Only meaningful
+// before boarding — see markOnBoard for the reverse (a late arrival clears
+// it). Guarded at the route level so only the ride's own marshal (or ops)
+// can call it.
+export async function markNoShow(id: number): Promise<BookingDto> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  await pool.query(
+    `UPDATE bookings SET no_show_at = now(), updated_at = now() WHERE id = $1 AND is_on_board = false`,
+    [id],
+  );
+  return getBooking(id);
 }
 
 // Called from updateRideStatus() when a ride becomes "completed" — boarding

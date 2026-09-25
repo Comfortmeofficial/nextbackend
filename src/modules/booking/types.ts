@@ -243,6 +243,7 @@ export interface BookingRow {
   pickup_stop_id: number | null;
   rating: number | null;
   rating_comment: string | null;
+  no_show_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -264,9 +265,31 @@ export interface BookingDto {
   pickup_stop_id: number | null;
   rating: number | null;
   rating_comment: string | null;
+  no_show_at: string | null;
   ride: RideDto;
   created_at: string;
   updated_at: string;
+}
+
+export type TripIssueCategory = "mechanical" | "passenger" | "safety" | "other";
+
+export interface TripIssueRow {
+  id: number;
+  ride_id: number;
+  reported_by_admin_id: number;
+  category: TripIssueCategory;
+  description: string;
+  created_at: Date;
+}
+
+export interface TripIssueDto {
+  id: number;
+  ride_id: number;
+  reported_by_admin_id: number;
+  reported_by_name: string;
+  category: TripIssueCategory;
+  description: string;
+  created_at: string;
 }
 
 export type ChatSenderType = "customer" | "marshal";
@@ -295,6 +318,7 @@ export interface PassengerDto {
   seat_number: string;
   status: BookingStatus;
   is_on_board: boolean;
+  no_show_at: string | null;
   pickup_stop_id: number | null;
   user_id: number;
   first_name: string;

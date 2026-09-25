@@ -229,6 +229,10 @@ export function ensureBookingSchema(): Promise<void> {
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_stop_id INTEGER;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rating SMALLINT;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rating_comment TEXT;
+      -- Set by a marshal when a booked passenger never boards; cleared if
+      -- they board late (see markOnBoard) — a no-show call doesn't lock
+      -- out a genuine late arrival.
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS no_show_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings (user_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_ride_id ON bookings (ride_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_group_reference ON bookings (group_reference);
@@ -316,6 +320,18 @@ export function ensureBookingSchema(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_trip_chat_thread ON trip_chat_messages (ride_id, user_id, created_at);
+
+      -- Reported by the marshal conducting a ride (mechanical trouble, a
+      -- passenger incident, anything ops should know about that trip).
+      CREATE TABLE IF NOT EXISTS trip_issues (
+        id SERIAL PRIMARY KEY,
+        ride_id INTEGER NOT NULL,
+        reported_by_admin_id INTEGER NOT NULL,
+        category VARCHAR(30) NOT NULL DEFAULT 'other',
+        description TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_trip_issues_ride ON trip_issues (ride_id, created_at);
 
       -- Foreign keys for the relations that live inside this one database
       -- (booking-DB-only; nothing here can constrain across the buses/
