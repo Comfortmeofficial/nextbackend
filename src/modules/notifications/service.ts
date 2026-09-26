@@ -32,6 +32,7 @@ const PURPOSE_LABELS: Record<string, string> = {
   signup: "account verification",
   password_reset: "password reset",
   wallet_pin: "wallet PIN setup",
+  account_deletion: "account deletion",
 };
 
 export async function sendOtpNotification(data: z.infer<typeof otpNotificationSchema>) {
