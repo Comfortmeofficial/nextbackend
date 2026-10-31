@@ -1,5 +1,5 @@
 import { ensurePaymentsSchema, getPaymentsPool } from "./db";
-import type { PaymentDto, PaymentMethod, PaymentPurpose, PaymentRow } from "./types";
+import type { PaymentDto, PaymentGateway, PaymentMethod, PaymentPurpose, PaymentRow } from "./types";
 
 function toDto(row: PaymentRow): PaymentDto {
   return {
@@ -10,6 +10,7 @@ function toDto(row: PaymentRow): PaymentDto {
     currency: row.currency,
     purpose: row.purpose.toLowerCase() as PaymentDto["purpose"],
     payment_method: row.payment_method.toLowerCase() as PaymentDto["payment_method"],
+    gateway: row.gateway.toLowerCase() as PaymentGateway,
     status: row.status.toLowerCase() as PaymentDto["status"],
     booking_id: row.booking_id,
     failure_reason: row.failure_reason,
@@ -30,14 +31,15 @@ export async function createPayment(input: {
   amount: number;
   purpose: PaymentPurpose;
   payment_method: PaymentMethod;
+  gateway?: PaymentGateway;
   booking_id?: number | null;
   metadata?: Record<string, unknown> | null;
 }): Promise<PaymentDto> {
   await ensurePaymentsSchema();
   const pool = getPaymentsPool();
   const { rows } = await pool.query<PaymentRow>(
-    `INSERT INTO payments (reference, user_id, amount, purpose, payment_method, booking_id, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO payments (reference, user_id, amount, purpose, payment_method, gateway, booking_id, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
     [
       input.reference,
@@ -45,6 +47,7 @@ export async function createPayment(input: {
       input.amount,
       input.purpose.toUpperCase(),
       input.payment_method.toUpperCase(),
+      input.gateway ?? "paystack",
       input.booking_id ?? null,
       input.metadata ?? null,
     ],

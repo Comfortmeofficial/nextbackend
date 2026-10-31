@@ -12,6 +12,8 @@ export const cardCreateSchema = z.object({
   expiry_year: z.string(),
   bank_name: z.string().nullable().optional(),
   paystack_auth_code: z.string().nullable().optional(),
+  gateway: z.enum(["paystack", "flutterwave"]).default("paystack"),
+  flutterwave_token: z.string().nullable().optional(),
 });
 export type CardCreateInput = z.infer<typeof cardCreateSchema>;
 

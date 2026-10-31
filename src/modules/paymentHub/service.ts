@@ -13,7 +13,7 @@ class OwnershipError extends ApiError {
     super(403, detail);
   }
 }
-import { addCard as addCardRecord } from "@/modules/cards/repository";
+import { addCard as addCardRecord, getCardForUser } from "@/modules/cards/repository";
 import {
   sendBookingCancelledNotification,
   sendBookingNotification,
@@ -23,10 +23,11 @@ import {
 } from "@/modules/notifications/service";
 import { applyReferral } from "@/modules/rewards/repository";
 import {
-  chargeAuthorization,
-  initializePayment,
-  verifyPayment as verifyPaystackPayment,
-} from "@/modules/payments/paystack";
+  chargeSavedCard,
+  getActiveGateway,
+  initializeWithGateway,
+  verifyByReference,
+} from "@/modules/payments/gateway";
 import {
   attachPaymentBooking,
   createPayment,
@@ -34,7 +35,7 @@ import {
   markPaymentFailed,
   markPaymentSuccessful,
 } from "@/modules/payments/repository";
-import type { VerifyPaymentResult } from "@/modules/payments/types";
+import type { PaymentGateway, VerifyPaymentResult } from "@/modules/payments/types";
 import { deductWallet, fundWallet, verifyPin } from "@/modules/wallet/repository";
 import {
   cancelBooking as cancelBookingRecord,
@@ -125,8 +126,20 @@ async function verifyWalletPinOrThrow(userId: number, pin: string): Promise<void
 
 export async function addCard(data: AddCardRequestInput) {
   const reference = randomUUID();
+  const gateway = await getActiveGateway();
+  // The ₦50 verification charge is a real payment attempt, so it gets a
+  // ledger row like any other — this is also how processPaymentResult's
+  // add_card branch later knows which gateway minted the resulting token.
+  await createPayment({
+    reference,
+    user_id: data.user_id,
+    amount: CARD_VERIFICATION_AMOUNT,
+    purpose: "other",
+    payment_method: "debit_card",
+    gateway,
+  });
   try {
-    const result = await initializePayment({
+    const result = await initializeWithGateway(gateway, {
       amount: CARD_VERIFICATION_AMOUNT,
       email: data.email,
       reference,
@@ -139,6 +152,7 @@ export async function addCard(data: AddCardRequestInput) {
       reference: result.reference,
     };
   } catch (err) {
+    await markPaymentFailed(reference, errMessage(err));
     throw new ApiError(400, errMessage(err));
   }
 }
@@ -152,23 +166,30 @@ export async function fundWalletHub(data: FundWalletRequestInput) {
     throw new ApiError(400, "Cannot fund wallet using wallet");
   }
 
+  const savedCard =
+    data.payment_method === "debit_card" && data.card_id
+      ? await getCardForUser(data.card_id, data.user_id)
+      : null;
+  if (data.card_id && !savedCard) {
+    throw new ApiError(404, "Card not found");
+  }
+  // A saved card is always re-charged through the gateway that originally
+  // minted its token, regardless of which gateway is currently active.
+  const gateway: PaymentGateway = savedCard?.gateway ?? (await getActiveGateway());
+
   await createPayment({
     reference,
     user_id: data.user_id,
     amount: data.amount,
     purpose: "wallet_funding",
     payment_method: data.payment_method,
+    gateway,
   });
 
-  if (data.payment_method === "debit_card" && data.authorization_code) {
+  if (savedCard) {
     // Charge saved card
     try {
-      const result = await chargeAuthorization({
-        authorization_code: data.authorization_code,
-        email: data.email,
-        amount: data.amount,
-        reference,
-      });
+      const result = await chargeSavedCard(savedCard, { email: data.email, amount: data.amount, reference });
       if (result.status !== "success" && result.status !== "successful") {
         await markPaymentFailed(reference, result.gateway_response ?? "Card charge failed");
         throw new ApiError(402, "Card charge failed");
@@ -210,9 +231,9 @@ export async function fundWalletHub(data: FundWalletRequestInput) {
     };
   }
 
-  // For bank_transfer or card without auth_code — return Paystack initialize URL
+  // For bank_transfer or card without a saved card — return a hosted checkout URL
   try {
-    const result = await initializePayment({
+    const result = await initializeWithGateway(gateway, {
       amount: data.amount,
       email: data.email,
       reference,
@@ -326,23 +347,23 @@ export async function payBooking(data: PayBookingRequestInput) {
       }
       throw new ApiError(402, `Payment failed, seats released: ${errMessage(err)}`);
     }
-  } else if (data.payment_method === "debit_card" && data.authorization_code) {
+  } else if (data.payment_method === "debit_card" && data.card_id) {
     // Saved card — charge immediately, then reserve seats atomically.
+    const savedCard = await getCardForUser(data.card_id, data.user_id);
+    if (!savedCard) {
+      throw new ApiError(404, "Card not found");
+    }
     await createPayment({
       reference,
       user_id: data.user_id,
       amount: finalAmount,
       purpose: "booking_payment",
       payment_method: "debit_card",
+      gateway: savedCard.gateway,
     });
 
     try {
-      const result = await chargeAuthorization({
-        authorization_code: data.authorization_code,
-        email: data.email,
-        amount: finalAmount,
-        reference,
-      });
+      const result = await chargeSavedCard(savedCard, { email: data.email, amount: finalAmount, reference });
       if (result.status !== "success" && result.status !== "successful") {
         await markPaymentFailed(reference, result.gateway_response ?? "Card charge failed");
         throw new ApiError(402, "Card charge failed");
@@ -353,7 +374,7 @@ export async function payBooking(data: PayBookingRequestInput) {
       throw new ApiError(402, errMessage(err));
     }
 
-    // Paystack has now actually been paid, independent of whether a booking
+    // The gateway has now actually been paid, independent of whether a booking
     // ends up existing — see attachPaymentBooking below for why booking_id
     // is attached separately rather than passed to markPaymentSuccessful.
     await markPaymentSuccessful(reference);
@@ -375,18 +396,21 @@ export async function payBooking(data: PayBookingRequestInput) {
       throw new ApiError(409, "Seats unavailable — amount refunded to your wallet");
     }
   } else if (data.payment_method === "debit_card" || data.payment_method === "bank_transfer") {
-    // New card or bank transfer — both go through Paystack's hosted
-    // checkout (bank transfer has no "saved authorization" concept, so it
-    // always takes this path); booking is created once payment verifies.
+    // New card or bank transfer — both go through the active gateway's
+    // hosted checkout (bank transfer has no "saved authorization" concept,
+    // so it always takes this path); booking is created once payment
+    // verifies.
+    const gateway = await getActiveGateway();
     await createPayment({
       reference,
       user_id: data.user_id,
       amount: finalAmount,
       purpose: "booking_payment",
       payment_method: data.payment_method,
+      gateway,
     });
     try {
-      const result = await initializePayment({
+      const result = await initializeWithGateway(gateway, {
         amount: finalAmount,
         email: data.email,
         reference,
@@ -562,22 +586,22 @@ export async function payPackage(data: PayPackageRequestInput) {
       });
       throw new ApiError(400, `Could not register package, amount refunded: ${errMessage(err)}`);
     }
-  } else if (data.payment_method === "debit_card" && data.authorization_code) {
+  } else if (data.payment_method === "debit_card" && data.card_id) {
+    const savedCard = await getCardForUser(data.card_id, data.sender_user_id);
+    if (!savedCard) {
+      throw new ApiError(404, "Card not found");
+    }
     await createPayment({
       reference,
       user_id: data.sender_user_id,
       amount: data.amount,
       purpose: "package_payment",
       payment_method: "debit_card",
+      gateway: savedCard.gateway,
     });
 
     try {
-      const result = await chargeAuthorization({
-        authorization_code: data.authorization_code,
-        email: data.email,
-        amount: data.amount,
-        reference,
-      });
+      const result = await chargeSavedCard(savedCard, { email: data.email, amount: data.amount, reference });
       if (result.status !== "success" && result.status !== "successful") {
         await markPaymentFailed(reference, result.gateway_response ?? "Card charge failed");
         throw new ApiError(402, "Card charge failed");
@@ -604,16 +628,18 @@ export async function payPackage(data: PayPackageRequestInput) {
       throw new ApiError(400, `Could not register package, amount refunded: ${errMessage(err)}`);
     }
   } else if (data.payment_method === "debit_card") {
-    // New card — Paystack checkout; package is created once payment verifies.
+    // New card — hosted checkout; package is created once payment verifies.
+    const gateway = await getActiveGateway();
     await createPayment({
       reference,
       user_id: data.sender_user_id,
       amount: data.amount,
       purpose: "package_payment",
       payment_method: "debit_card",
+      gateway,
     });
     try {
-      const result = await initializePayment({
+      const result = await initializeWithGateway(gateway, {
         amount: data.amount,
         email: data.email,
         reference,
@@ -757,17 +783,19 @@ export async function payRental(data: PayRentalRequestInput) {
     return { success: true, message: "Rental payment successful", reference, amount };
   }
 
-  // card / bank_transfer — Paystack checkout; rental is confirmed once payment verifies
+  // card / bank_transfer — hosted checkout; rental is confirmed once payment verifies
   const reference = randomUUID();
+  const gateway = await getActiveGateway();
   await createPayment({
     reference,
     user_id: data.user_id,
     amount,
     purpose: "rental_payment",
     payment_method: data.payment_method,
+    gateway,
   });
   try {
-    const result = await initializePayment({
+    const result = await initializeWithGateway(gateway, {
       amount,
       email: data.email,
       reference,
@@ -849,6 +877,10 @@ export async function processPaymentResult(
           await rewardReferrerIfEligible(userId, "wallet_funding", result.amount);
         }
       } else if (purpose === "add_card" && result.authorization_code) {
+        // Store the reusable token under whichever column matches the
+        // gateway this payment actually used — `payment` (looked up above
+        // for the idempotency check) already carries it.
+        const cardGateway = payment?.gateway ?? "paystack";
         await addCardRecord({
           user_id: metadata.user_id as number,
           card_holder_name: "Card holder",
@@ -857,7 +889,9 @@ export async function processPaymentResult(
           expiry_month: result.exp_month ?? "",
           expiry_year: result.exp_year ?? "",
           bank_name: result.bank,
-          paystack_auth_code: result.authorization_code,
+          gateway: cardGateway,
+          paystack_auth_code: cardGateway === "paystack" ? result.authorization_code : null,
+          flutterwave_token: cardGateway === "flutterwave" ? result.authorization_code : null,
         });
       } else if (purpose === "rental_payment") {
         const rentalId = metadata.rental_id as number;
@@ -996,7 +1030,7 @@ export async function processPaymentResult(
 // does NOT flatten the same way — see its own comment for why.
 export async function verifyPaymentHub(reference: string, requestingUserId: number) {
   try {
-    const result = await verifyPaystackPayment(reference);
+    const result = await verifyByReference(reference);
     const metadata = (result.metadata ?? {}) as Record<string, unknown>;
     const metadataUserId = metadata.user_id as number | undefined;
     if (metadataUserId !== undefined && metadataUserId !== requestingUserId) {

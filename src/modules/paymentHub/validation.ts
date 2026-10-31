@@ -21,7 +21,7 @@ export const fundWalletRequestSchema = z.object({
   email: z.string(),
   amount: z.number(),
   payment_method: paymentMethodSchema.default("debit_card"),
-  authorization_code: z.string().nullable().optional(),
+  card_id: z.number().int().nullable().optional(),
   callback_url: z.string().nullable().optional(),
 });
 export type FundWalletRequestInput = z.infer<typeof fundWalletRequestSchema>;
@@ -81,7 +81,7 @@ export const payBookingRequestSchema = z
     payment_method: paymentMethodSchema,
     wallet_pin: z.string().nullable().optional(),
     coupon_code: z.string().nullable().optional(),
-    authorization_code: z.string().nullable().optional(),
+    card_id: z.number().int().nullable().optional(),
     callback_url: z.string().nullable().optional(),
   })
   .refine((d) => (d.legs?.length ?? 0) > 0 || (d.ride_id != null && (d.seat_numbers?.length ?? 0) > 0), {
@@ -100,7 +100,7 @@ export const payPackageRequestSchema = z.object({
   amount: z.number(),
   payment_method: paymentMethodSchema,
   wallet_pin: z.string().nullable().optional(),
-  authorization_code: z.string().nullable().optional(),
+  card_id: z.number().int().nullable().optional(),
   callback_url: z.string().nullable().optional(),
 });
 export type PayPackageRequestInput = z.infer<typeof payPackageRequestSchema>;

@@ -39,6 +39,19 @@ export function ensureCardsSchema(): Promise<void> {
         deleted_at TIMESTAMPTZ
       );
       CREATE INDEX IF NOT EXISTS idx_cards_user_id ON cards (user_id);
+
+      -- Added when Flutterwave became a second gateway. Every pre-existing
+      -- row defaults to 'paystack' (correct, since that's the only gateway
+      -- that could have minted paystack_auth_code before this existed) and
+      -- flutterwave_token stays null for them — no backfill needed.
+      -- paystack_auth_code is kept as-is, never renamed, so old rows stay
+      -- valid: a card's reusable token lives in whichever of the two
+      -- columns matches its own gateway.
+      ALTER TABLE cards ADD COLUMN IF NOT EXISTS gateway VARCHAR(20) NOT NULL DEFAULT 'paystack';
+      ALTER TABLE cards DROP CONSTRAINT IF EXISTS cards_gateway_check;
+      ALTER TABLE cards ADD CONSTRAINT cards_gateway_check
+        CHECK (gateway IN ('paystack', 'flutterwave'));
+      ALTER TABLE cards ADD COLUMN IF NOT EXISTS flutterwave_token VARCHAR(255);
     `)
       .then(() => undefined)
       .catch((err) => {

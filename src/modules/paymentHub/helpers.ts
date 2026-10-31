@@ -5,8 +5,8 @@ import { getUser } from "@/modules/users/repository";
 import { fundWallet } from "@/modules/wallet/repository";
 import type { PaymentMethod } from "./validation";
 
-// Nominal amount charged to tokenize a new card; Paystack returns a reusable
-// authorization_code from any successful charge, verification or not.
+// Nominal amount charged to tokenize a new card; the active gateway returns
+// a reusable charge token from any successful charge, verification or not.
 export const CARD_VERIFICATION_AMOUNT = 50.0;
 
 // Cancellation always refunds to wallet, regardless of original payment

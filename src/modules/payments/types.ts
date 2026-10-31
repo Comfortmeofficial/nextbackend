@@ -1,3 +1,5 @@
+export type PaymentGateway = "paystack" | "flutterwave";
+
 export interface InitializePaymentResult {
   authorization_url: string;
   access_code: string;
@@ -50,6 +52,7 @@ export interface PaymentRow {
   currency: string;
   purpose: string; // uppercase in the DB, see toApiPurpose/toApiStatus
   payment_method: string;
+  gateway: string;
   status: string;
   booking_id: number | null;
   failure_reason: string | null;
@@ -67,6 +70,7 @@ export interface PaymentDto {
   currency: string;
   purpose: PaymentPurpose;
   payment_method: PaymentMethod;
+  gateway: PaymentGateway;
   status: PaymentStatus;
   booking_id: number | null;
   failure_reason: string | null;

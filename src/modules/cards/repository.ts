@@ -13,7 +13,7 @@ function toDto(row: CardRow): CardDto {
     expiry_month: row.expiry_month,
     expiry_year: row.expiry_year,
     bank_name: row.bank_name,
-    paystack_auth_code: row.paystack_auth_code,
+    gateway: row.gateway,
     is_default: row.is_default,
     created_at: row.created_at.toISOString(),
   };
@@ -26,6 +26,26 @@ async function findActiveById(id: number): Promise<CardRow | null> {
     [id],
   );
   return rows[0] ?? null;
+}
+
+// Resolves a saved card for re-charging: looks up its own stored gateway and
+// token (paystack_auth_code or flutterwave_token, whichever that card's
+// gateway actually populated), scoped to the requesting user so one
+// customer can never charge another's saved card. Internal-only — never
+// returned to a client; see the note on CardDto for why.
+export async function getCardForUser(
+  cardId: number,
+  userId: number,
+): Promise<{ gateway: "paystack" | "flutterwave"; token: string } | null> {
+  const card = await findActiveById(cardId);
+  if (!card || card.user_id !== userId) {
+    return null;
+  }
+  const token = card.gateway === "flutterwave" ? card.flutterwave_token : card.paystack_auth_code;
+  if (!token) {
+    return null;
+  }
+  return { gateway: card.gateway as "paystack" | "flutterwave", token };
 }
 
 async function listActiveByUser(userId: number): Promise<CardRow[]> {
@@ -47,8 +67,9 @@ export async function addCard(input: CardCreateInput): Promise<CardDto> {
   const { rows } = await pool.query<CardRow>(
     `INSERT INTO cards (
        user_id, card_holder_name, last_four, card_type,
-       expiry_month, expiry_year, bank_name, paystack_auth_code, is_default
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       expiry_month, expiry_year, bank_name, paystack_auth_code,
+       gateway, flutterwave_token, is_default
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
     [
       input.user_id,
@@ -59,6 +80,8 @@ export async function addCard(input: CardCreateInput): Promise<CardDto> {
       input.expiry_year,
       input.bank_name ?? null,
       input.paystack_auth_code ?? null,
+      input.gateway,
+      input.flutterwave_token ?? null,
       isFirstCard,
     ],
   );

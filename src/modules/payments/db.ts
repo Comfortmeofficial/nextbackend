@@ -64,6 +64,14 @@ export function ensurePaymentsSchema(): Promise<void> {
       ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_payment_method_check;
       ALTER TABLE payments ADD CONSTRAINT payments_payment_method_check
         CHECK (payment_method IN ('DEBIT_CARD', 'BANK_TRANSFER', 'WALLET'));
+
+      -- Added when Flutterwave became a second gateway. Defaults every
+      -- pre-existing row to 'paystack', which is correct since Paystack was
+      -- the only gateway before this column existed — no backfill needed.
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway VARCHAR(20) NOT NULL DEFAULT 'paystack';
+      ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_gateway_check;
+      ALTER TABLE payments ADD CONSTRAINT payments_gateway_check
+        CHECK (gateway IN ('paystack', 'flutterwave'));
     `,
       )
       .then(() => undefined)
