@@ -1,6 +1,6 @@
 import QRCode from "qrcode";
 import { formatNaira, formatRideDateTime } from "./format";
-import { sendEmail } from "./providers/resend";
+import { sendEmail, type EmailAttachment } from "./providers/resend";
 import { sendPush } from "./providers/expo";
 import { sendSms } from "./providers/twilio";
 import { storeNotification } from "./repository";
@@ -66,9 +66,26 @@ export async function sendOtpNotification(data: z.infer<typeof otpNotificationSc
 // parse unmodified — a QR from this email scans exactly like the one in
 // the app. One per booking row (per seat), not per leg: boarding happens
 // per seat, and each seat is its own booking with its own reference.
-async function ticketQrDataUrl(bookingId: number, reference: string): Promise<string | null> {
+//
+// Returned as a CID-referenced attachment, not a data:-URI <img src>:
+// Gmail (and other major clients) strip data: URIs from HTML email
+// outright, rendering a broken image — a proper inline attachment,
+// referenced in the HTML via <img src="cid:...">, is the only reliable way
+// to embed an image directly in the email body.
+async function ticketQrAttachment(
+  bookingId: number,
+  reference: string,
+): Promise<(EmailAttachment & { contentId: string }) | null> {
   try {
-    return await QRCode.toDataURL(`CMBOOKING:${bookingId}:${reference}`, { margin: 1, width: 192 });
+    const buffer = await QRCode.toBuffer(`CMBOOKING:${bookingId}:${reference}`, { margin: 1, width: 192 });
+    const contentId = `qr-booking-${bookingId}`;
+    return {
+      contentId,
+      filename: `ticket-${bookingId}.png`,
+      content: buffer.toString("base64"),
+      content_id: contentId,
+      content_type: "image/png",
+    };
   } catch (e) {
     // A failed QR render must never block the rest of the confirmation email.
     console.error("[notifications] failed to render ticket QR:", e);
@@ -80,17 +97,20 @@ export async function sendBookingNotification(data: z.infer<typeof bookingNotifi
   const title = "Booking Confirmed! \u{1F389}";
   const body = `Ref: ${data.reference} · NGN ${formatNaira(data.amount)}. Have a comfortable ride!`;
   const smsBody = `Booking Confirmed! Reference: ${data.reference}. Amount: NGN ${formatNaira(data.amount)}. Have a comfortable ride!`;
+  const qrAttachments: EmailAttachment[] = [];
   const legsHtml = (
     await Promise.all(
       data.legs.map(async (leg) => {
         const ticketsHtml = (
           await Promise.all(
             leg.tickets.map(async (t) => {
-              const qr = await ticketQrDataUrl(t.booking_id, t.reference);
+              const qr = await ticketQrAttachment(t.booking_id, t.reference);
               if (!qr) return "";
+              const { contentId, ...attachment } = qr;
+              qrAttachments.push(attachment);
               return `
         <div style="display:inline-block;text-align:center;margin:4px 10px 0 0;">
-          <img src="${qr}" alt="Boarding QR for seat ${t.seat_number}" width="96" height="96" style="width:96px;height:96px;" />
+          <img src="cid:${contentId}" alt="Boarding QR for seat ${t.seat_number}" width="96" height="96" style="width:96px;height:96px;" />
           <p style="color:#9ca3af;font-size:11px;margin:2px 0 0;">Seat ${t.seat_number}</p>
         </div>`;
             }),
@@ -121,7 +141,7 @@ export async function sendBookingNotification(data: z.infer<typeof bookingNotifi
 
   if (data.phone) await sendSms(data.phone, smsBody);
   if (data.push_token) await sendPush(data.push_token, title, body, { type: "booking", reference: data.reference });
-  if (data.email) await sendEmail(data.email, title, emailHtml);
+  if (data.email) await sendEmail(data.email, title, emailHtml, qrAttachments);
 
   await storeNotification(data.user_id, "booking", title, body);
   return { message: "Booking confirmation sent" };
