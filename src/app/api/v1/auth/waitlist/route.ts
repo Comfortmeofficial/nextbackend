@@ -21,13 +21,16 @@ export async function POST(request: NextRequest) {
 }
 
 // GET /api/v1/auth/waitlist?skip=0&limit=50 — admin-only listing of everyone
-// who has joined via the landing page's waitlist form.
+// who has joined via the landing page's waitlist form. Returns { data, total }
+// (total across every page, not just this one) rather than a bare array, so
+// the admin dashboard's count and pagination don't have to guess at the real
+// total from whatever happens to be on the current page.
 export async function GET(request: NextRequest) {
   try {
     await requireAdminAuth(request, OPS_ROLES);
     const { skip, limit } = listQuerySchema.parse(Object.fromEntries(request.nextUrl.searchParams));
-    const items = await listWaitlist(skip, limit);
-    return NextResponse.json(items);
+    const result = await listWaitlist(skip, limit);
+    return NextResponse.json(result);
   } catch (error) {
     return handleRouteError(error);
   }

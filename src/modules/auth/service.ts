@@ -474,14 +474,20 @@ function toWaitlistEntryDto(row: Record<string, unknown>): WaitlistEntryDto {
   } as WaitlistEntryDto;
 }
 
-export async function listWaitlist(skip: number, limit: number): Promise<WaitlistEntryDto[]> {
+export async function listWaitlist(
+  skip: number,
+  limit: number,
+): Promise<{ data: WaitlistEntryDto[]; total: number }> {
   await ensureAuthSchema();
-  const res = await query(
-    `SELECT ${WAITLIST_SELECT_COLUMNS} FROM waitlist_entries
-     WHERE deleted_at IS NULL ORDER BY created_at DESC OFFSET $1 LIMIT $2`,
-    [skip, limit],
-  );
-  return res.rows.map(toWaitlistEntryDto);
+  const [res, countRes] = await Promise.all([
+    query(
+      `SELECT ${WAITLIST_SELECT_COLUMNS} FROM waitlist_entries
+       WHERE deleted_at IS NULL ORDER BY created_at DESC OFFSET $1 LIMIT $2`,
+      [skip, limit],
+    ),
+    query(`SELECT COUNT(*) FROM waitlist_entries WHERE deleted_at IS NULL`),
+  ]);
+  return { data: res.rows.map(toWaitlistEntryDto), total: parseInt(countRes.rows[0].count, 10) };
 }
 
 export async function getWaitlistEntry(id: number): Promise<WaitlistEntryDto> {
