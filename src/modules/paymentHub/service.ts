@@ -843,7 +843,15 @@ export async function processPaymentResult(
 
   const payment = await getPaymentByReference(reference);
   if (payment && payment.status !== "pending") {
-    return { ...response, already_processed: true };
+    // A second caller racing the first (the webhook beating the client's
+    // own verify call back from the redirect, or vice versa) must still
+    // report the real booking_id — otherwise whichever caller loses the
+    // race sees a response with no booking_id and treats a successful,
+    // already-booked payment as a failure. booking_id only ever lives on
+    // `response` via the booking_payment branch below, which this early
+    // return skips entirely, so it has to be pulled from the payment row
+    // itself (set once, by whichever call actually ran that branch first).
+    return { ...response, booking_id: payment.booking_id ?? undefined, already_processed: true };
   }
 
   if (result.status === "success") {
