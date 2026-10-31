@@ -1,3 +1,4 @@
+import QRCode from "qrcode";
 import { formatNaira, formatRideDateTime } from "./format";
 import { sendEmail } from "./providers/resend";
 import { sendPush } from "./providers/expo";
@@ -33,6 +34,7 @@ const PURPOSE_LABELS: Record<string, string> = {
   password_reset: "password reset",
   wallet_pin: "wallet PIN setup",
   account_deletion: "account deletion",
+  guest_checkout_verify: "checkout",
 };
 
 export async function sendOtpNotification(data: z.infer<typeof otpNotificationSchema>) {
@@ -58,22 +60,54 @@ export async function sendOtpNotification(data: z.infer<typeof otpNotificationSc
   return { message: "OTP notification sent", purpose: data.purpose };
 }
 
+// The exact same "CMBOOKING:{booking_id}:{reference}" string the mobile
+// app's BookingQRModal renders client-side, and that checkBoardingCode()
+// (by matching `reference`) and the marshal admin app's scanner already
+// parse unmodified — a QR from this email scans exactly like the one in
+// the app. One per booking row (per seat), not per leg: boarding happens
+// per seat, and each seat is its own booking with its own reference.
+async function ticketQrDataUrl(bookingId: number, reference: string): Promise<string | null> {
+  try {
+    return await QRCode.toDataURL(`CMBOOKING:${bookingId}:${reference}`, { margin: 1, width: 192 });
+  } catch (e) {
+    // A failed QR render must never block the rest of the confirmation email.
+    console.error("[notifications] failed to render ticket QR:", e);
+    return null;
+  }
+}
+
 export async function sendBookingNotification(data: z.infer<typeof bookingNotificationSchema>) {
   const title = "Booking Confirmed! \u{1F389}";
   const body = `Ref: ${data.reference} · NGN ${formatNaira(data.amount)}. Have a comfortable ride!`;
   const smsBody = `Booking Confirmed! Reference: ${data.reference}. Amount: NGN ${formatNaira(data.amount)}. Have a comfortable ride!`;
-  const legsHtml = data.legs
-    .map(
-      (leg) => `
+  const legsHtml = (
+    await Promise.all(
+      data.legs.map(async (leg) => {
+        const ticketsHtml = (
+          await Promise.all(
+            leg.tickets.map(async (t) => {
+              const qr = await ticketQrDataUrl(t.booking_id, t.reference);
+              if (!qr) return "";
+              return `
+        <div style="display:inline-block;text-align:center;margin:4px 10px 0 0;">
+          <img src="${qr}" alt="Boarding QR for seat ${t.seat_number}" width="96" height="96" style="width:96px;height:96px;" />
+          <p style="color:#9ca3af;font-size:11px;margin:2px 0 0;">Seat ${t.seat_number}</p>
+        </div>`;
+            }),
+          )
+        ).join("");
+        return `
     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:12px 0;">
       <p style="color:#1A1A1A;font-size:15px;font-weight:bold;margin:0 0 6px;">${leg.location_name} \u{2192} ${leg.destination_name}</p>
       <p style="color:#6b7280;font-size:14px;margin:2px 0;">Departure: ${formatRideDateTime(leg.departure_time)}</p>
       <p style="color:#6b7280;font-size:14px;margin:2px 0;">Seat${leg.seat_numbers.length > 1 ? "s" : ""}: ${leg.seat_numbers.join(", ")}</p>
       ${leg.bus_plate ? `<p style="color:#6b7280;font-size:14px;margin:2px 0;">Bus: ${leg.bus_plate}</p>` : ""}
       <p style="color:#6b7280;font-size:14px;margin:2px 0;">Fare: NGN ${formatNaira(leg.fare)}</p>
-    </div>`,
+      ${ticketsHtml ? `<div style="margin-top:10px;">${ticketsHtml}</div>` : ""}
+    </div>`;
+      }),
     )
-    .join("");
+  ).join("");
   const emailHtml = `
   <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f9fafb;border-radius:12px;">
     ${EMAIL_LOGO_HTML}

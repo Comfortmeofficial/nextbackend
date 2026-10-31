@@ -21,6 +21,16 @@ export const otpNotificationSchema = z.object({
 // multi-day purchase) — everything the confirmation email needs to actually
 // describe the trip, since a bare reference + amount previously left riders
 // with a booking confirmation that said nothing about the ride itself.
+// One entry per actual booking row (one per seat) on this ride — what the
+// QR ticket in the email is built from. checkBoardingCode() compares a
+// scanned code against a single booking's own `reference`, not the group
+// reference shown at the top of the email, so each seat needs its own.
+const bookingTicketSchema = z.object({
+  booking_id: z.number().int(),
+  reference: z.string(),
+  seat_number: z.string(),
+});
+
 const bookingLegSchema = z.object({
   location_name: z.string(),
   destination_name: z.string(),
@@ -28,6 +38,7 @@ const bookingLegSchema = z.object({
   seat_numbers: z.array(z.string()),
   bus_plate: z.string().nullable().optional(),
   fare: z.number(),
+  tickets: z.array(bookingTicketSchema).default([]),
 });
 
 export const bookingNotificationSchema = z.object({

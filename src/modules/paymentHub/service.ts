@@ -79,13 +79,16 @@ function summarizeBookingLegs(bookings: BookingDto[]) {
       seat_numbers: string[];
       bus_plate: string | null;
       fare: number;
+      tickets: { booking_id: number; reference: string; seat_number: string }[];
     }
   >();
   for (const b of bookings) {
     const existing = byRide.get(b.ride_id);
+    const ticket = { booking_id: b.id, reference: b.reference, seat_number: b.seat_number };
     if (existing) {
       existing.seat_numbers.push(b.seat_number);
       existing.fare += b.final_amount;
+      existing.tickets.push(ticket);
     } else {
       byRide.set(b.ride_id, {
         location_name: b.ride.route.location.name,
@@ -94,6 +97,7 @@ function summarizeBookingLegs(bookings: BookingDto[]) {
         bus_plate: b.ride.bus_plate,
         seat_numbers: [b.seat_number],
         fare: b.final_amount,
+        tickets: [ticket],
       });
     }
   }

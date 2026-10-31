@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { after } from "next/server";
 import { ApiError } from "@/lib/http-errors";
-import { createUser, updateUser } from "@/modules/users/repository";
+import { createUser, getUserByEmail, updateUser } from "@/modules/users/repository";
 import { sendOtpNotification, sendWaitlistNotification } from "@/modules/notifications/service";
 import { ensureAuthSchema, query } from "./db";
 import { AuthError } from "./errors";
@@ -278,6 +278,86 @@ export async function completeSignupVerification(email: string) {
     }),
   );
   return issueTokens(user_id, email, role);
+}
+
+// ---------- Guest checkout (website, no password account) ----------
+
+export interface GuestCheckoutInput {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+}
+
+export type GuestSessionResult =
+  | { requires_verification: true }
+  | { requires_verification: false; access_token: string; refresh_token: string; user_id: number };
+
+// Lets someone buy a ticket on the website with no password account. Two
+// outcomes:
+//  - This email has no real (auth_users) credentials yet — either it's
+//    brand new, or it belongs to an earlier guest purchase that never set a
+//    password. Either way a session is minted straight away: same
+//    signAccess/signRefresh real login uses, so every booking/payment
+//    endpoint downstream needs no changes to accept it.
+//  - This email DOES have real credentials. Don't silently hand out a
+//    session for someone else's real account just because a stranger typed
+//    their email — the caller must prove they own it first (send-otp with
+//    purpose "guest_checkout_verify", then verifyGuestSession below).
+export async function startGuestSession(data: GuestCheckoutInput): Promise<GuestSessionResult> {
+  await ensureAuthSchema();
+  const email = normalizeEmail(data.email);
+
+  const credRes = await query("SELECT 1 FROM auth_users WHERE email = $1", [email]);
+  if ((credRes.rowCount ?? 0) > 0) {
+    return { requires_verification: true };
+  }
+
+  const existing = await getUserByEmail(email);
+  let userId: number;
+  if (existing) {
+    // A repeat guest — reuse their existing passwordless profile rather than
+    // colliding on users.email's unique index with a second row.
+    userId = existing.id;
+  } else {
+    const user = await createUser({
+      first_name: data.first_name,
+      last_name: data.last_name,
+      email,
+      phone: data.phone,
+    });
+    userId = user.id;
+
+    // Best-effort, and only for a genuinely new person — joinWaitlist
+    // already dedupes by email (409 if already on it), which this just
+    // swallows; a failure here must never block the booking itself.
+    after(() =>
+      joinWaitlist({ full_name: `${data.first_name} ${data.last_name}`.trim(), email, phone: data.phone }).catch(
+        () => {},
+      ),
+    );
+  }
+
+  const tokens = await issueTokens(userId, email, "user");
+  return { requires_verification: false, ...tokens };
+}
+
+export async function verifyGuestSession(email: string, otp: string): Promise<GuestSessionResult> {
+  await ensureAuthSchema();
+  email = normalizeEmail(email);
+
+  const valid = await verifyOTP(email, otp, "guest_checkout_verify");
+  if (!valid) {
+    throw new AuthError(400, "Invalid or expired code");
+  }
+
+  const res = await query("SELECT user_id, role FROM auth_users WHERE email = $1", [email]);
+  if (res.rowCount === 0) {
+    throw new AuthError(404, "No account found for this email");
+  }
+  const { user_id, role } = res.rows[0];
+  const tokens = await issueTokens(user_id, email, role);
+  return { requires_verification: false, ...tokens };
 }
 
 // ---------- Sync email from the users module ----------
