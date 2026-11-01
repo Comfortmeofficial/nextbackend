@@ -40,7 +40,7 @@ async function toDto(row: RideScheduleRow): Promise<RideScheduleDto> {
   let locationDto: ReturnType<typeof placeDto> | undefined;
   let destinationDto: ReturnType<typeof placeDto> | undefined;
 
-  const route = row.route_id ? await loadFullRoute(row.route_id) : null;
+  const route = row.route_id ? await loadFullRoute(row.route_id, true) : null;
   if (route) {
     routeName = route.name;
     locationId = route.location_id;

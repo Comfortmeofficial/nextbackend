@@ -464,17 +464,14 @@ export async function payBooking(data: PayBookingRequestInput) {
 
 // ---------- cancel-booking ----------
 
-export async function cancelBookingHub(bookingId: number, requestingUserId: number) {
-  let booking;
-  try {
-    booking = await getBooking(bookingId);
-  } catch {
-    throw new ApiError(404, "Booking not found");
-  }
-
-  if (booking.user_id !== requestingUserId) {
-    throw new ApiError(403, "Not your booking");
-  }
+// Shared by both entry points below — the only thing that differs between a
+// customer choosing to cancel their own trip and an admin cancelling one on
+// the platform's behalf (its route/schedule was removed, say) is whether
+// the 10% cancellation fee applies. Everything else — releasing the seat,
+// crediting the refund to the wallet, notifying the customer — is
+// identical either way.
+async function cancelBookingAndRefund(booking: BookingDto, deductionRate: number) {
+  const bookingId = booking.id;
 
   if (booking.status === "cancelled") {
     throw new ApiError(400, "Booking is already cancelled");
@@ -490,18 +487,21 @@ export async function cancelBookingHub(bookingId: number, requestingUserId: numb
   }
 
   const paid = booking.final_amount || 0;
-  const deduction = Math.round(paid * CANCELLATION_DEDUCTION_RATE * 100) / 100;
+  const deduction = Math.round(paid * deductionRate * 100) / 100;
   const refundAmount = Math.round((paid - deduction) * 100) / 100;
   const reference = randomUUID();
 
   if (refundAmount > 0) {
     // Refunds aren't tracked in `payments` — only in the wallet's own
-    // ledger. Payments is deliberately just "what came in via Paystack".
+    // ledger. Payments is deliberately just "what came in via the gateway".
     await fundWallet({
       user_id: booking.user_id,
       amount: refundAmount,
       type: "refund",
-      description: `Refund for cancelled booking #${bookingId} (10% cancellation fee deducted)`,
+      description:
+        deduction > 0
+          ? `Refund for cancelled booking #${bookingId} (10% cancellation fee deducted)`
+          : `Refund for cancelled booking #${bookingId}`,
       reference,
     });
   }
@@ -529,6 +529,40 @@ export async function cancelBookingHub(bookingId: number, requestingUserId: numb
     deduction,
     refund_amount: refundAmount,
   };
+}
+
+export async function cancelBookingHub(bookingId: number, requestingUserId: number) {
+  let booking;
+  try {
+    booking = await getBooking(bookingId);
+  } catch {
+    throw new ApiError(404, "Booking not found");
+  }
+
+  if (booking.user_id !== requestingUserId) {
+    throw new ApiError(403, "Not your booking");
+  }
+
+  return cancelBookingAndRefund(booking, CANCELLATION_DEDUCTION_RATE);
+}
+
+// Admin-initiated cancellation for when it's the platform's fault, not the
+// customer's (its route or schedule was removed, say) — refunds the full
+// amount, no cancellation fee, no ownership check (an admin can cancel any
+// booking this way). Deliberately separate from DELETE /api/v1/bookings/
+// {id} (cancelBooking/cancelBookingRecord), which stays a zero-refund,
+// no-notification cancel for when a refund genuinely isn't warranted (a
+// no-show, fraud, correcting a mistake) — this is only for "we're
+// cancelling your otherwise-valid trip through no fault of your own."
+export async function adminCancelBookingWithRefund(bookingId: number) {
+  let booking;
+  try {
+    booking = await getBooking(bookingId);
+  } catch {
+    throw new ApiError(404, "Booking not found");
+  }
+
+  return cancelBookingAndRefund(booking, 0);
 }
 
 // ---------- pay-package ----------

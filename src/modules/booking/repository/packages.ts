@@ -7,7 +7,7 @@ import { loadFullRoute, placeholderRoute } from "./routes";
 
 async function toDto(row: PackageRow): Promise<PackageDto> {
   const ride = await getRideRow(row.ride_id);
-  const route = ride ? (await loadFullRoute(ride.route_id)) ?? placeholderRoute(ride.route_id) : null;
+  const route = ride ? (await loadFullRoute(ride.route_id, true)) ?? placeholderRoute(ride.route_id) : null;
   return {
     id: row.id,
     order_id: row.order_id,

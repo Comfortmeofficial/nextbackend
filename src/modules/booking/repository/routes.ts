@@ -17,10 +17,15 @@ function placeDto(row: PlaceRow) {
   };
 }
 
-async function loadFullRoute(id: number): Promise<RouteDto | null> {
+// includeDeleted lets a ride/booking/package/schedule still show the real
+// route it was for even after that route is deleted — soft delete only
+// marks the row, the name/location/destination/stops are all still there.
+// Routes' own CRUD paths (list/get/update) never pass this: a deleted
+// route genuinely shouldn't appear as a live, bookable route there.
+async function loadFullRoute(id: number, includeDeleted = false): Promise<RouteDto | null> {
   const pool = getBookingPool();
   const { rows } = await pool.query<RouteRow>(
-    `SELECT * FROM routes WHERE id = $1 AND deleted_at IS NULL`,
+    `SELECT * FROM routes WHERE id = $1 ${includeDeleted ? "" : "AND deleted_at IS NULL"}`,
     [id],
   );
   const route = rows[0];

@@ -10,7 +10,7 @@ import { loadFullRoute, placeholderRoute } from "./routes";
 
 async function toDto(row: BookingRow): Promise<BookingDto> {
   const ride = await getRideRow(row.ride_id);
-  const route = ride ? (await loadFullRoute(ride.route_id)) ?? placeholderRoute(ride.route_id) : null;
+  const route = ride ? (await loadFullRoute(ride.route_id, true)) ?? placeholderRoute(ride.route_id) : null;
   return {
     id: row.id,
     reference: row.reference,
