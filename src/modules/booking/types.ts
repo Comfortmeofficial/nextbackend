@@ -241,6 +241,7 @@ export interface BookingRow {
   status: BookingStatus;
   is_on_board: boolean;
   pickup_stop_id: number | null;
+  dropoff_stop_id: number | null;
   rating: number | null;
   rating_comment: string | null;
   no_show_at: Date | null;
@@ -263,6 +264,7 @@ export interface BookingDto {
   status: BookingStatus;
   is_on_board: boolean;
   pickup_stop_id: number | null;
+  dropoff_stop_id: number | null;
   rating: number | null;
   rating_comment: string | null;
   no_show_at: string | null;
@@ -320,6 +322,7 @@ export interface PassengerDto {
   is_on_board: boolean;
   no_show_at: string | null;
   pickup_stop_id: number | null;
+  dropoff_stop_id: number | null;
   user_id: number;
   first_name: string;
   last_name: string;

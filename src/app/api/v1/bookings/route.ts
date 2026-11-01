@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
       groupReference: "",
       paymentMethod: input.payment_method,
       pickupStopId: input.pickup_stop_id ?? null,
+      dropoffStopId: input.dropoff_stop_id ?? null,
     });
     return NextResponse.json(booking, { status: 201 });
   } catch (error) {

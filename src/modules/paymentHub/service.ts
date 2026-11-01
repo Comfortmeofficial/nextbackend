@@ -264,7 +264,14 @@ export async function payBooking(data: PayBookingRequestInput) {
   const legs: BookingLegInput[] =
     data.legs && data.legs.length > 0
       ? data.legs
-      : [{ ride_id: data.ride_id!, seat_numbers: data.seat_numbers!, pickup_stop_id: data.pickup_stop_id ?? null }];
+      : [
+          {
+            ride_id: data.ride_id!,
+            seat_numbers: data.seat_numbers!,
+            pickup_stop_id: data.pickup_stop_id ?? null,
+            dropoff_stop_id: data.dropoff_stop_id ?? null,
+          },
+        ];
 
   if (legs.some((leg) => !leg.seat_numbers.length)) {
     throw new ApiError(400, "At least one seat must be selected");
@@ -310,6 +317,7 @@ export async function payBooking(data: PayBookingRequestInput) {
         groupReference: reference,
         paymentMethod,
         pickupStopId: leg.pickup_stop_id ?? null,
+        dropoffStopId: leg.dropoff_stop_id ?? null,
       })),
     );
 
@@ -1005,13 +1013,19 @@ export async function processPaymentResult(
         // initialized before this field existed.
         const legs =
           (metadata.legs as
-            | { ride_id: number; seat_numbers: string[]; pickup_stop_id?: number | null }[]
+            | {
+                ride_id: number;
+                seat_numbers: string[];
+                pickup_stop_id?: number | null;
+                dropoff_stop_id?: number | null;
+              }[]
             | undefined) ??
           [
             {
               ride_id: metadata.ride_id as number,
               seat_numbers: (metadata.seat_numbers as string[]) ?? [],
               pickup_stop_id: null,
+              dropoff_stop_id: null,
             },
           ];
         const paymentMethod = metadata.payment_method === "bank_transfer" ? "bank_transfer" : "debit_card";
@@ -1032,6 +1046,7 @@ export async function processPaymentResult(
                 groupReference: reference,
                 paymentMethod,
                 pickupStopId: leg.pickup_stop_id ?? null,
+                dropoffStopId: leg.dropoff_stop_id ?? null,
               })),
             ),
           );

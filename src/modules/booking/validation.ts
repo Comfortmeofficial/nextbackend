@@ -117,6 +117,7 @@ export const bookingInputSchema = z.object({
   coupon_code: z.string().default(""),
   payment_method: paymentMethodSchema,
   pickup_stop_id: z.number().int().positive().nullable().optional(),
+  dropoff_stop_id: z.number().int().positive().nullable().optional(),
 });
 export type BookingInput = z.infer<typeof bookingInputSchema>;
 
@@ -133,6 +134,7 @@ export const bulkBookingInputSchema = z.object({
   coupon_code: z.string().default(""),
   group_reference: z.string().default(""),
   pickup_stop_id: z.number().int().positive().nullable().optional(),
+  dropoff_stop_id: z.number().int().positive().nullable().optional(),
   seats: z.array(bulkBookingSeatInputSchema).min(1),
 });
 export type BulkBookingInput = z.infer<typeof bulkBookingInputSchema>;

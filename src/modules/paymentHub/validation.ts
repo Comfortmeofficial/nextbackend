@@ -63,6 +63,7 @@ export const bookingLegSchema = z.object({
   ride_id: z.number().int(),
   seat_numbers: z.array(z.string()).min(1),
   pickup_stop_id: z.number().int().positive().nullable().optional(),
+  dropoff_stop_id: z.number().int().positive().nullable().optional(),
 });
 export type BookingLegInput = z.infer<typeof bookingLegSchema>;
 
@@ -76,6 +77,7 @@ export const payBookingRequestSchema = z
     ride_id: z.number().int().optional(),
     seat_numbers: z.array(z.string()).optional(),
     pickup_stop_id: z.number().int().positive().nullable().optional(),
+    dropoff_stop_id: z.number().int().positive().nullable().optional(),
     legs: z.array(bookingLegSchema).min(1).optional(),
     amount: z.number(),
     payment_method: paymentMethodSchema,

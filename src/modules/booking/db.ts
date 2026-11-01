@@ -227,6 +227,10 @@ export function ensureBookingSchema(): Promise<void> {
         deleted_at TIMESTAMPTZ
       );
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS pickup_stop_id INTEGER;
+      -- Where the passenger gets off, as opposed to pickup_stop_id (where
+      -- they board) — null means "ride to the route's final destination",
+      -- same as it always implicitly did before this column existed.
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS dropoff_stop_id INTEGER;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rating SMALLINT;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rating_comment TEXT;
       -- Set by a marshal when a booked passenger never boards; cleared if
@@ -238,6 +242,7 @@ export function ensureBookingSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_bookings_group_reference ON bookings (group_reference);
       CREATE INDEX IF NOT EXISTS idx_bookings_deleted_at ON bookings (deleted_at);
       CREATE INDEX IF NOT EXISTS idx_bookings_pickup_stop_id ON bookings (pickup_stop_id);
+      CREATE INDEX IF NOT EXISTS idx_bookings_dropoff_stop_id ON bookings (dropoff_stop_id);
 
       CREATE TABLE IF NOT EXISTS survey_questions (
         id SERIAL PRIMARY KEY,
@@ -357,6 +362,10 @@ export function ensureBookingSchema(): Promise<void> {
           ALTER TABLE bookings ADD CONSTRAINT fk_bookings_pickup_stop_id
             FOREIGN KEY (pickup_stop_id) REFERENCES stops (id) NOT VALID;
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_bookings_dropoff_stop_id') THEN
+          ALTER TABLE bookings ADD CONSTRAINT fk_bookings_dropoff_stop_id
+            FOREIGN KEY (dropoff_stop_id) REFERENCES stops (id) NOT VALID;
+        END IF;
         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_route_stops_route_id') THEN
           ALTER TABLE route_stops ADD CONSTRAINT fk_route_stops_route_id
             FOREIGN KEY (route_id) REFERENCES routes (id) NOT VALID;
@@ -377,6 +386,7 @@ export function ensureBookingSchema(): Promise<void> {
       ALTER TABLE rides VALIDATE CONSTRAINT fk_rides_route_id;
       ALTER TABLE bookings VALIDATE CONSTRAINT fk_bookings_ride_id;
       ALTER TABLE bookings VALIDATE CONSTRAINT fk_bookings_pickup_stop_id;
+      ALTER TABLE bookings VALIDATE CONSTRAINT fk_bookings_dropoff_stop_id;
       ALTER TABLE route_stops VALIDATE CONSTRAINT fk_route_stops_route_id;
       ALTER TABLE route_stops VALIDATE CONSTRAINT fk_route_stops_stop_id;
       ALTER TABLE packages VALIDATE CONSTRAINT fk_packages_ride_id;

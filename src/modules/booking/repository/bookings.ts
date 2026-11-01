@@ -26,6 +26,7 @@ async function toDto(row: BookingRow): Promise<BookingDto> {
     status: row.status,
     is_on_board: row.is_on_board,
     pickup_stop_id: row.pickup_stop_id,
+    dropoff_stop_id: row.dropoff_stop_id,
     rating: row.rating,
     rating_comment: row.rating_comment,
     no_show_at: row.no_show_at ? row.no_show_at.toISOString() : null,
@@ -79,6 +80,7 @@ export interface BookingSeatInput {
   groupReference: string;
   paymentMethod: PaymentMethod;
   pickupStopId?: number | null;
+  dropoffStopId?: number | null;
 }
 
 async function insertBookingRow(client: PoolClient, input: BookingSeatInput): Promise<BookingRow> {
@@ -97,8 +99,9 @@ async function insertBookingRow(client: PoolClient, input: BookingSeatInput): Pr
   const { rows } = await client.query(
     `INSERT INTO bookings (
        reference, group_reference, user_id, ride_id, seat_number, amount,
-       discount_amount, final_amount, coupon_code, payment_method, status, pickup_stop_id
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'confirmed', $11)
+       discount_amount, final_amount, coupon_code, payment_method, status,
+       pickup_stop_id, dropoff_stop_id
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'confirmed', $11, $12)
      RETURNING *`,
     [
       reference,
@@ -112,6 +115,7 @@ async function insertBookingRow(client: PoolClient, input: BookingSeatInput): Pr
       input.couponCode,
       input.paymentMethod,
       input.pickupStopId ?? null,
+      input.dropoffStopId ?? null,
     ],
   );
   const booking = rows[0] as BookingRow;
@@ -286,6 +290,7 @@ export async function listPassengersForRide(rideId: number): Promise<PassengerDt
         is_on_board: row.is_on_board,
         no_show_at: row.no_show_at ? row.no_show_at.toISOString() : null,
         pickup_stop_id: row.pickup_stop_id,
+        dropoff_stop_id: row.dropoff_stop_id,
         user_id: row.user_id,
         first_name: user?.first_name ?? "Unknown",
         last_name: user?.last_name ?? "",
