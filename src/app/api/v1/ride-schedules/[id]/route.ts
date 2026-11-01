@@ -50,7 +50,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 }
 
-// DELETE /api/v1/ride-schedules/{id} — stops future generation only.
+// DELETE /api/v1/ride-schedules/{id} — stops future generation and removes
+// any of its already-generated upcoming rides nobody has booked yet (see
+// deleteRideSchedule for why a ride with an existing booking is left alone).
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
     const actor = await requireAdminAuth(request, OPS_ROLES);

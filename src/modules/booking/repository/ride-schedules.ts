@@ -5,7 +5,7 @@ import { fetchBusInfo, fetchDriverInfo, fetchMarshalInfo } from "../external";
 import type { PlaceRow, RideScheduleDto, RideScheduleRow, RideScheduleStatus } from "../types";
 import type { RideScheduleInput } from "../validation";
 import { createRoute, getRoute, loadFullRoute } from "./routes";
-import { createRide, seatDefsFromBusSeats } from "./rides";
+import { createRide, seatDefsFromBusSeats, updateRideStatus } from "./rides";
 
 function placeDto(row: PlaceRow) {
   return {
@@ -206,13 +206,41 @@ export async function updateRideScheduleStatus(id: number, status: RideScheduleS
   return toDto(rows[0]);
 }
 
-// Pausing/deleting a schedule only ever stops future generation — it never
-// touches rides already generated from it. Those are edited/cancelled
-// individually through the normal single-ride flows, same as any other ride.
+// Pausing/deleting a schedule stops future generation AND removes whichever
+// of its already-generated upcoming rides nobody has booked yet — those
+// only exist because the schedule created them, so there's no reason to
+// leave them bookable once it's gone. A ride with a live (non-cancelled)
+// booking on it is deliberately left untouched: cancelling someone's
+// already-paid trip needs a refund + notification this bulk path doesn't
+// do, so that's left to an admin handling it individually, same as any
+// other ride cancellation.
 export async function deleteRideSchedule(id: number): Promise<void> {
   await ensureBookingSchema();
   const pool = getBookingPool();
   await pool.query(`UPDATE ride_schedules SET deleted_at = now() WHERE id = $1`, [id]);
+
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT rides.id FROM rides
+     WHERE rides.schedule_id = $1
+       AND rides.deleted_at IS NULL
+       AND rides.status = 'scheduled'
+       AND rides.departure_time > now()
+       AND NOT EXISTS (
+         SELECT 1 FROM bookings
+         WHERE bookings.ride_id = rides.id
+           AND bookings.deleted_at IS NULL
+           AND bookings.status != 'cancelled'
+       )`,
+    [id],
+  );
+
+  // Sequential, not Promise.all — same connection-pool-exhaustion reasoning
+  // as getExistingRideDatesForSchedule below; a schedule rarely has more
+  // than a handful of unbooked upcoming rides at once.
+  for (const row of rows) {
+    await updateRideStatus(row.id, "cancelled");
+    await pool.query(`UPDATE rides SET deleted_at = now() WHERE id = $1`, [row.id]);
+  }
 }
 
 function dateOnly(d: Date): string {
