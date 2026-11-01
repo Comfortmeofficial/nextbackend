@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/http-errors";
+import { setDriverTripStatus } from "@/modules/drivers/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import { findOrCreatePlaceIdByLocation } from "./places";
 import type { PlaceRow, RouteDto, RouteRow, RouteStatus, RouteStopDto } from "../types";
@@ -269,16 +270,42 @@ export async function getRoute(id: number): Promise<RouteDto> {
   return route;
 }
 
-// Deleting a route never cascades to rides that already reference it (by
-// design — see placeholderRoute above), but that's exactly why this must
-// refuse to delete one with real upcoming trips still depending on it: an
-// admin's next visit to Routes shouldn't be able to strand a paying
-// customer's already-booked trip with no route info, which is precisely
-// what happened before placeholderRoute existed (a customer's confirmed
-// booking silently started showing "Unknown -> Unknown").
+// Deleting a route first removes its own upcoming rides that nobody has
+// booked yet (same policy as deleting a ride schedule — see
+// deleteRideSchedule), then refuses to go through if anything is still
+// left that can't be safely auto-removed: a boarding/in-progress trip, or
+// an upcoming ride with a live booking on it. An admin's next visit to
+// Routes shouldn't be able to strand a paying customer's already-booked
+// trip with no route info, which is precisely what happened before
+// placeholderRoute existed (a customer's confirmed booking silently
+// started showing "Unknown -> Unknown") — placeholderRoute still covers
+// historical/completed rides referencing a deleted route, just not these.
 export async function deleteRoute(id: number): Promise<void> {
   await ensureBookingSchema();
   const pool = getBookingPool();
+
+  const { rows: removable } = await pool.query<{ id: number; driver_id: number }>(
+    `SELECT rides.id, rides.driver_id FROM rides
+     WHERE rides.route_id = $1
+       AND rides.deleted_at IS NULL
+       AND rides.status = 'scheduled'
+       AND rides.departure_time > now()
+       AND NOT EXISTS (
+         SELECT 1 FROM bookings
+         WHERE bookings.ride_id = rides.id
+           AND bookings.deleted_at IS NULL
+           AND bookings.status != 'cancelled'
+       )`,
+    [id],
+  );
+  for (const row of removable) {
+    await pool.query(
+      `UPDATE rides SET status = 'cancelled', deleted_at = now(), updated_at = now() WHERE id = $1`,
+      [row.id],
+    );
+    await setDriverTripStatus(row.driver_id, "cancelled");
+  }
+
   // A future-dated ride isn't the only thing worth protecting: the ride
   // lifecycle is never auto-advanced after departure (see the same note in
   // the mobile app), so a boarding/active trip can sit well past its
@@ -286,7 +313,9 @@ export async function deleteRoute(id: number): Promise<void> {
   // departure_time > now() alone missed exactly that case once already
   // (a since-deleted route whose only dependent ride was stuck in
   // 'boarding' from weeks earlier silently broke that rider's Active Trip
-  // card instead of blocking the delete).
+  // card instead of blocking the delete). What's left at this point is only
+  // ever a boarding/active ride, or an upcoming one with a live booking —
+  // the unbooked ones were already cleared above.
   const { rows } = await pool.query<{ count: string }>(
     `SELECT COUNT(*) FROM rides
      WHERE route_id = $1 AND deleted_at IS NULL
@@ -297,10 +326,18 @@ export async function deleteRoute(id: number): Promise<void> {
   if (blockingRideCount > 0) {
     throw new ApiError(
       409,
-      `Cannot delete route ${id}: it still has ${blockingRideCount} upcoming or in-progress ride(s). Cancel or reassign those first, or mark the route inactive instead.`,
+      `Cannot delete route ${id}: it still has ${blockingRideCount} upcoming or in-progress ride(s) with existing bookings, or a ride currently boarding/active. Cancel or reassign those first, or mark the route inactive instead.`,
     );
   }
   await pool.query(`UPDATE routes SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, [id]);
+
+  // Any schedule still pointed at this now-deleted route would otherwise
+  // keep trying (and failing) to generate new rides for it on every future
+  // generation run — same "stops future generation" semantics as deleting
+  // a schedule directly, just triggered from the route side instead.
+  await pool.query(`UPDATE ride_schedules SET deleted_at = now() WHERE route_id = $1 AND deleted_at IS NULL`, [
+    id,
+  ]);
 }
 
 // Same pause-not-delete pattern as ride schedule status: marking a route
