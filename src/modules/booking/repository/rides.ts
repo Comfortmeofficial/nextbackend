@@ -438,6 +438,21 @@ export async function getCurrentRideIdsForBuses(busIds: number[]): Promise<Map<n
   return new Map(rows.map((r) => [Number(r.bus_id), Number(r.id)]));
 }
 
+// Ride status is purely event-driven (a marshal/driver starting/ending a
+// trip, or an admin cancelling one) — nothing ever advances it just
+// because departure_time passed, so a ride nobody touched sits in
+// 'scheduled' forever regardless of how long ago it departed. This finds
+// exactly those: still 'scheduled', never cancelled/deleted, departure
+// already in the past — used by cancelStaleDepartedRides to clean them up.
+export async function listStaleDepartedRideIds(): Promise<number[]> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT id FROM rides WHERE status = 'scheduled' AND deleted_at IS NULL AND departure_time < now()`,
+  );
+  return rows.map((r) => r.id);
+}
+
 export async function updateRideStatus(id: number, status: RideStatus): Promise<RideDto> {
   await ensureBookingSchema();
   const pool = getBookingPool();

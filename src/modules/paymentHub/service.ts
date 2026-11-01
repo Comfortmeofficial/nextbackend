@@ -41,11 +41,13 @@ import {
   cancelBooking as cancelBookingRecord,
   createBookingsBulk,
   getBooking,
+  listPassengersForRide,
 } from "@/modules/booking/repository/bookings";
 import type { BookingSeatInput } from "@/modules/booking/repository/bookings";
 import type { BookingDto } from "@/modules/booking/types";
 import { createPackage } from "@/modules/booking/repository/packages";
 import { createRental, getRental, updateRentalStatus } from "@/modules/booking/repository/rentals";
+import { listStaleDepartedRideIds, updateRideStatus } from "@/modules/booking/repository/rides";
 import {
   CANCELLATION_DEDUCTION_RATE,
   CARD_VERIFICATION_AMOUNT,
@@ -563,6 +565,51 @@ export async function adminCancelBookingWithRefund(bookingId: number) {
   }
 
   return cancelBookingAndRefund(booking, 0);
+}
+
+export interface CancelStaleRidesSummary {
+  rides_cancelled: number;
+  bookings_refunded: number;
+  total_refunded: number;
+  errors: string[];
+}
+
+// One-off/repeatable cleanup for rides whose departure time has already
+// passed with nobody ever advancing their status (see the note on
+// listStaleDepartedRideIds — this is a known, existing gap, not new data
+// corruption). There's no way to tell from the data alone whether the trip
+// actually ran or not, so every passenger still booked on one of these
+// gets the same full, no-fee refund as adminCancelBookingWithRefund —
+// treating it as the platform's failure to close the trip out properly,
+// never the passenger's fault. Each ride (and each booking within it) is
+// handled independently so one failure doesn't abort the whole batch.
+export async function cancelStaleDepartedRides(): Promise<CancelStaleRidesSummary> {
+  const rideIds = await listStaleDepartedRideIds();
+  let ridesCancelled = 0;
+  let bookingsRefunded = 0;
+  let totalRefunded = 0;
+  const errors: string[] = [];
+
+  for (const rideId of rideIds) {
+    try {
+      const passengers = await listPassengersForRide(rideId);
+      for (const passenger of passengers) {
+        try {
+          const result = await adminCancelBookingWithRefund(passenger.booking_id);
+          bookingsRefunded += 1;
+          totalRefunded += result.refund_amount;
+        } catch (err) {
+          errors.push(`booking #${passenger.booking_id}: ${errMessage(err)}`);
+        }
+      }
+      await updateRideStatus(rideId, "cancelled");
+      ridesCancelled += 1;
+    } catch (err) {
+      errors.push(`ride #${rideId}: ${errMessage(err)}`);
+    }
+  }
+
+  return { rides_cancelled: ridesCancelled, bookings_refunded: bookingsRefunded, total_refunded: totalRefunded, errors };
 }
 
 // ---------- pay-package ----------
