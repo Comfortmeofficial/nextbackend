@@ -9,10 +9,10 @@ import { startGuestSession, type GuestCheckoutInput } from "@/modules/auth/servi
 // "guest_checkout_verify") and calls POST /auth/guest/verify instead.
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as Partial<GuestCheckoutInput>;
-  const { first_name, last_name, email, phone } = body;
-  if (!first_name || !last_name || !email || !phone) {
+  const { first_name, last_name, email } = body;
+  if (!first_name || !last_name || !email) {
     return NextResponse.json(
-      { detail: "first_name, last_name, email and phone are required" },
+      { detail: "first_name, last_name and email are required" },
       { status: 400 },
     );
   }

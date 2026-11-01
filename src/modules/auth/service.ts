@@ -286,7 +286,11 @@ export interface GuestCheckoutInput {
   first_name: string;
   last_name: string;
   email: string;
-  phone: string;
+  // Optional — the website's guest checkout only collects email now;
+  // the mobile app's own real-account signup still collects phone
+  // separately, so this stays accepted here for that/any other caller
+  // that does have it.
+  phone?: string | null;
 }
 
 export type GuestSessionResult =
@@ -332,7 +336,7 @@ export async function startGuestSession(data: GuestCheckoutInput): Promise<Guest
     // already dedupes by email (409 if already on it), which this just
     // swallows; a failure here must never block the booking itself.
     after(() =>
-      joinWaitlist({ full_name: `${data.first_name} ${data.last_name}`.trim(), email, phone: data.phone }).catch(
+      joinWaitlist({ full_name: `${data.first_name} ${data.last_name}`.trim(), email, phone: data.phone ?? undefined }).catch(
         () => {},
       ),
     );
