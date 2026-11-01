@@ -93,7 +93,7 @@ export async function listAdmins(skip: number, limit: number): Promise<AdminDto[
   await ensureAdminSchema();
   const pool = getAdminPool();
   const { rows } = await pool.query<AdminRow>(
-    `SELECT * FROM admins WHERE deleted_at IS NULL OFFSET $1 LIMIT $2`,
+    `SELECT * FROM admins WHERE deleted_at IS NULL ORDER BY created_at DESC OFFSET $1 LIMIT $2`,
     [skip, limit],
   );
   return rows.map(toDto);

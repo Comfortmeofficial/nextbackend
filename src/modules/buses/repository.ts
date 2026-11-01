@@ -132,7 +132,7 @@ export async function listBuses(): Promise<BusDto[]> {
   const pool = getBusesPool();
   try {
     const { rows } = await pool.query<BusRow>(
-      `SELECT ${SELECT_COLUMNS} FROM buses WHERE status != 'retired' ORDER BY id`,
+      `SELECT ${SELECT_COLUMNS} FROM buses WHERE status != 'retired' ORDER BY created_at DESC`,
     );
     return toDtoList(rows);
   } catch {

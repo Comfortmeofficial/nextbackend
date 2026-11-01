@@ -194,7 +194,7 @@ export async function listDrivers(skip: number, limit: number): Promise<DriverDt
   await ensureDriversSchema();
   const pool = getDriversPool();
   const { rows } = await pool.query<DriverRow>(
-    `SELECT ${SELECT_COLUMNS} FROM drivers WHERE deleted_at IS NULL OFFSET $1 LIMIT $2`,
+    `SELECT ${SELECT_COLUMNS} FROM drivers WHERE deleted_at IS NULL ORDER BY created_at DESC OFFSET $1 LIMIT $2`,
     [skip, limit],
   );
   return toDtoList(rows);

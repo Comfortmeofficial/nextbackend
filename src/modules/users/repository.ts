@@ -101,7 +101,7 @@ export async function listUsers(skip: number, limit: number): Promise<UserDto[]>
   await ensureUsersSchema();
   const pool = getUsersPool();
   const { rows } = await pool.query<UserRow>(
-    `SELECT * FROM users WHERE deleted_at IS NULL OFFSET $1 LIMIT $2`,
+    `SELECT * FROM users WHERE deleted_at IS NULL ORDER BY created_at DESC OFFSET $1 LIMIT $2`,
     [skip, limit],
   );
   return rows.map(toDto);

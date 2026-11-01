@@ -250,7 +250,7 @@ export async function listRoutes(skip: number, limit: number, status?: RouteStat
   }
   params.push(skip, limit);
   const { rows } = await pool.query<{ id: number }>(
-    `SELECT id FROM routes WHERE ${conditions.join(" AND ")} ORDER BY name ASC OFFSET $${params.length - 1} LIMIT $${params.length}`,
+    `SELECT id FROM routes WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC OFFSET $${params.length - 1} LIMIT $${params.length}`,
     params,
   );
   // Sequential, not Promise.all — loadFullRoute makes 4+ queries per route,
