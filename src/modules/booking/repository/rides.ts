@@ -598,7 +598,11 @@ async function runSearchQuery(
   fromDate?: string | null,
   toDate?: string | null,
 ): Promise<RideRow[]> {
-  const conditions = [`rides.status = 'scheduled'`, `rides.deleted_at IS NULL`];
+  // Boarding/active rides stay searchable too — starting a trip
+  // (status='active'/'boarding') shouldn't pull it from what's bookable;
+  // only actually ending it (status='completed', via end-trip) or
+  // cancelling it should.
+  const conditions = [`rides.status NOT IN ('completed', 'cancelled')`, `rides.deleted_at IS NULL`];
   const params: unknown[] = [];
 
   if (fromDate) {
