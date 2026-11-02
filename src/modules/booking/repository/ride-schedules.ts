@@ -1,11 +1,14 @@
 import { ApiError } from "@/lib/http-errors";
 import { assertDriverAssignable } from "@/modules/drivers/repository";
+import { sendRideUpdate } from "@/modules/notifications/service";
+import { getUser } from "@/modules/users/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import { fetchBusInfo, fetchDriverInfo, fetchMarshalInfo } from "../external";
-import type { PlaceRow, RideScheduleDto, RideScheduleRow, RideScheduleStatus } from "../types";
+import type { PlaceRow, RideRow, RideScheduleDto, RideScheduleRow, RideScheduleStatus } from "../types";
 import type { RideScheduleInput } from "../validation";
+import { listPassengersForRide } from "./bookings";
 import { createRoute, getRoute, loadFullRoute } from "./routes";
-import { createRide, seatDefsFromBusSeats, updateRideStatus } from "./rides";
+import { createRide, type SeatDef, seatDefsFromBusSeats, updateRideStatus } from "./rides";
 
 function placeDto(row: PlaceRow) {
   return {
@@ -169,9 +172,213 @@ export async function getRideSchedule(id: number): Promise<RideScheduleDto> {
   return toDto(row);
 }
 
+interface NewBusContext {
+  busId: number;
+  plate: string;
+  model: string;
+  driverId: number;
+  driverName: string;
+  driverRating: number;
+  marshalAdminId: number | null;
+  marshalName: string | null;
+  seatDefs: SeatDef[];
+  driverRow: number | null;
+  driverCol: number | null;
+}
+
+// Resolved up front, before the schedule row (or any ride) is touched, so
+// a bad new-bus assignment (no driver, no seats configured, driver not
+// assignable) fails loudly instead of leaving the schedule saved with
+// rides it then couldn't actually propagate the bus change to.
+async function resolveNewBusContext(busId: number): Promise<NewBusContext> {
+  const bus = await fetchBusInfo(busId);
+  if (!bus.driverId) throw new ApiError(400, `bus ${busId} has no driver assigned`);
+  await assertDriverAssignable(bus.driverId);
+  const driver = await fetchDriverInfo(bus.driverId);
+  const marshal = bus.marshalId ? await fetchMarshalInfo(bus.marshalId) : null;
+  const { seatDefs, driverRow, driverCol } = seatDefsFromBusSeats(bus.seats);
+  if (seatDefs.length === 0) throw new ApiError(400, `bus ${busId} has no seats configured`);
+  return {
+    busId,
+    plate: bus.plateNumber,
+    model: bus.model,
+    driverId: bus.driverId,
+    driverName: driver.fullName,
+    driverRating: driver.rating,
+    marshalAdminId: bus.marshalId,
+    marshalName: marshal?.fullName ?? null,
+    seatDefs,
+    driverRow,
+    driverCol,
+  };
+}
+
+// A ride is only ever a one-time snapshot taken at generation — editing a
+// schedule afterward used to never reach rides it had already generated,
+// so a passenger's ticket kept showing a stale departure time/fare/route/
+// bus forever. This pushes the schedule's new values onto every upcoming
+// (not yet departed, still 'scheduled') ride it has already generated.
+//
+// Route and bus are only ever changed on a ride with zero bookings — same
+// boundary resyncRideSeatsForBus already uses for the identical reason: a
+// different bus can have a different seat layout than what's already
+// sold, and a different route can drop a stop an existing booking's
+// pickup/drop-off already points at. A booked ride keeps its original
+// route/bus even though the schedule's own changed, but still gets any
+// time/fare change — and, since it has a real passenger on it, a
+// notification about whatever changed.
+async function propagateScheduleUpdate(
+  scheduleId: number,
+  after: RideScheduleRow,
+  newBus: NewBusContext | null,
+): Promise<void> {
+  const pool = getBookingPool();
+  const { rows: rides } = await pool.query<RideRow>(
+    `SELECT * FROM rides
+     WHERE schedule_id = $1 AND deleted_at IS NULL AND status = 'scheduled' AND departure_time > now()`,
+    [scheduleId],
+  );
+  if (rides.length === 0) return;
+
+  for (const ride of rides) {
+    const canChangeRouteOrBus = ride.booked_seats === 0;
+    const { departureTime, arrivalTime } = combineDateAndTime(
+      dateOnly(ride.departure_time),
+      after.departure_time_of_day,
+      after.duration_minutes,
+    );
+    const timeOrFareChanged =
+      departureTime.getTime() !== ride.departure_time.getTime() ||
+      (arrivalTime?.getTime() ?? null) !== (ride.arrival_time?.getTime() ?? null) ||
+      ride.fare !== after.fare;
+
+    const routeId = canChangeRouteOrBus ? after.route_id : ride.route_id;
+    // Only apply the schedule's new stop_fares when this ride actually
+    // ends up on the route they were validated against (routeId ===
+    // after.route_id) — otherwise (a booked ride stuck on its old route)
+    // they'd reference stop ids that may not even exist on that route,
+    // so this ride keeps its own existing stop_fares instead.
+    const stopFares = routeId === after.route_id ? after.stop_fares : ride.stop_fares;
+    let busId = ride.bus_id;
+    let busPlate = ride.bus_plate;
+    let busModel = ride.bus_model;
+    let driverId = ride.driver_id;
+    let driverName = ride.driver_name;
+    let driverRating = ride.driver_rating;
+    let marshalAdminId = ride.marshal_admin_id;
+    let marshalName = ride.marshal_name;
+    let totalSeats = ride.total_seats;
+    let driverRow = ride.driver_row;
+    let driverCol = ride.driver_col;
+    let reseat: SeatDef[] | null = null;
+
+    if (canChangeRouteOrBus && newBus) {
+      busId = newBus.busId;
+      busPlate = newBus.plate;
+      busModel = newBus.model;
+      driverId = newBus.driverId;
+      driverName = newBus.driverName;
+      driverRating = newBus.driverRating;
+      marshalAdminId = newBus.marshalAdminId;
+      marshalName = newBus.marshalName;
+      totalSeats = newBus.seatDefs.length;
+      driverRow = newBus.driverRow;
+      driverCol = newBus.driverCol;
+      reseat = newBus.seatDefs;
+    }
+
+    await pool.query(
+      `UPDATE rides SET
+         departure_time = $2, arrival_time = $3, fare = $4, stop_fares = $5::jsonb,
+         route_id = $6, bus_id = $7, bus_plate = $8, bus_model = $9,
+         driver_id = $10, driver_name = $11, driver_rating = $12,
+         marshal_admin_id = $13, marshal_name = $14,
+         total_seats = $15, driver_row = $16, driver_col = $17,
+         updated_at = now()
+       WHERE id = $1`,
+      [
+        ride.id,
+        departureTime,
+        arrivalTime,
+        after.fare,
+        JSON.stringify(stopFares),
+        routeId,
+        busId,
+        busPlate,
+        busModel,
+        driverId,
+        driverName,
+        driverRating,
+        marshalAdminId,
+        marshalName,
+        totalSeats,
+        driverRow,
+        driverCol,
+      ],
+    );
+
+    if (reseat) {
+      await pool.query(`DELETE FROM ride_seats WHERE ride_id = $1`, [ride.id]);
+      for (const seat of reseat) {
+        await pool.query(
+          `INSERT INTO ride_seats (ride_id, seat_number, "row", col, seat_type, status)
+           VALUES ($1, $2, $3, $4, $5, 'available')`,
+          [ride.id, seat.seat_number, seat.row, seat.col, seat.seat_type],
+        );
+      }
+    }
+
+    // Route/bus only ever change on an unbooked ride (no passengers to
+    // alert), so a notification is only ever about the time/fare change a
+    // booked ride does still receive.
+    if (ride.booked_seats > 0 && timeOrFareChanged) {
+      await notifyPassengersOfScheduleChange(ride.id, after.departure_time_of_day, ride.fare !== after.fare);
+    }
+  }
+}
+
+async function notifyPassengersOfScheduleChange(
+  rideId: number,
+  newTimeOfDay: string,
+  fareChanged: boolean,
+): Promise<void> {
+  const passengers = await listPassengersForRide(rideId);
+  const notified = new Set<number>();
+  const message =
+    `Your trip's departure time has been updated to ${newTimeOfDay}` +
+    (fareChanged ? ", and its fare has changed" : "") +
+    ". Check the app for the latest details.";
+
+  for (const p of passengers) {
+    if (notified.has(p.user_id)) continue;
+    notified.add(p.user_id);
+    try {
+      const user = await getUser(p.user_id);
+      if (!user) continue;
+      await sendRideUpdate({
+        user_id: p.user_id,
+        ride_id: rideId,
+        message,
+        phone: user.phone,
+        email: user.email,
+        push_token: user.push_notifications_enabled ? user.push_token : null,
+      });
+    } catch {
+      // Best-effort, same as every other notification fan-out in this
+      // codebase (see notifyRentalEvent) — one passenger's bad contact
+      // info must never block the schedule update or the next passenger.
+    }
+  }
+}
+
 export async function updateRideSchedule(id: number, input: RideScheduleInput): Promise<RideScheduleDto> {
   await ensureBookingSchema();
   const pool = getBookingPool();
+  const before = await getRideScheduleRow(id);
+  if (!before) throw new ApiError(404, "Schedule not found");
+
+  const newBus = input.bus_id !== before.bus_id ? await resolveNewBusContext(input.bus_id) : null;
+
   const { rows } = await pool.query<RideScheduleRow>(
     `UPDATE ride_schedules SET
        bus_id=$2, route_id=$3, fare=$4, stop_fares=$5, departure_time_of_day=$6, duration_minutes=$7,
@@ -192,7 +399,11 @@ export async function updateRideSchedule(id: number, input: RideScheduleInput): 
     ],
   );
   if (!rows[0]) throw new ApiError(404, "Schedule not found");
-  return toDto(rows[0]);
+  const after = rows[0];
+
+  await propagateScheduleUpdate(id, after, newBus);
+
+  return toDto(after);
 }
 
 export async function updateRideScheduleStatus(id: number, status: RideScheduleStatus): Promise<RideScheduleDto> {

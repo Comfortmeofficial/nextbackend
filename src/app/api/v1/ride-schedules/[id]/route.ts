@@ -25,8 +25,10 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
 }
 
-// PATCH /api/v1/ride-schedules/{id} — edits the schedule's own fields only;
-// never touches rides already generated from it.
+// PATCH /api/v1/ride-schedules/{id} — also pushes the change onto every
+// upcoming ride this schedule has already generated (see
+// propagateScheduleUpdate), notifying any already-booked passenger on an
+// affected one.
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const actor = await requireAdminAuth(request, OPS_ROLES);

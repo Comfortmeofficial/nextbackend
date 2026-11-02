@@ -195,6 +195,7 @@ export async function sendRideUpdate(data: z.infer<typeof rideUpdateSchema>) {
   if (data.push_token) {
     await sendPush(data.push_token, title, data.message, { type: "ride_update", ride_id: data.ride_id });
   }
+  if (data.email) await sendEmail(data.email, title, `<p>${data.message}</p>`);
 
   await storeNotification(data.user_id, "ride_update", title, data.message);
   return { message: "Ride update sent" };

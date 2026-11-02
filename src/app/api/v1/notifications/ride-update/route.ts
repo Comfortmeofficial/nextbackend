@@ -5,9 +5,10 @@ import { recordAuditLog } from "@/modules/admin/audit";
 import { sendRideUpdate } from "@/modules/notifications/service";
 import { rideUpdateSchema } from "@/modules/notifications/validation";
 
-// POST /api/v1/notifications/ride-update — also no email channel. The only
-// caller is admin_web_app's NotificationsPage (confirmed no in-process
-// caller exists), so this is safe to gate without breaking anything else.
+// POST /api/v1/notifications/ride-update — manually triggered from
+// admin_web_app's NotificationsPage. Also called in-process by
+// propagateScheduleUpdate when a schedule edit changes an already-booked
+// upcoming ride's time or fare.
 export async function POST(request: NextRequest) {
   try {
     const actor = await requireAdminAuth(request, OPS_OR_MARSHAL_ROLES);
