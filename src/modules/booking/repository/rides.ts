@@ -305,6 +305,7 @@ export async function listRides(
   limit: number,
   status?: string,
   withinDays?: number,
+  sort?: "departure_asc" | "created_desc",
 ): Promise<RideDto[]> {
   await ensureBookingSchema();
   const pool = getBookingPool();
@@ -322,8 +323,9 @@ export async function listRides(
     where += ` AND departure_time >= now() AND departure_time < now() + ($${params.length}::int * interval '1 day')`;
   }
   params.push(skip, limit);
+  const orderBy = sort === "created_desc" ? "created_at DESC" : "departure_time ASC";
   const { rows } = await pool.query<RideRow>(
-    `SELECT * FROM rides ${where} ORDER BY departure_time ASC OFFSET $${params.length - 1} LIMIT $${params.length}`,
+    `SELECT * FROM rides ${where} ORDER BY ${orderBy} OFFSET $${params.length - 1} LIMIT $${params.length}`,
     params,
   );
   return Promise.all(rows.map(loadRideForList));

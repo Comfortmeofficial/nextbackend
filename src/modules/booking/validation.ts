@@ -194,6 +194,14 @@ export const listQuerySchema = z.object({
 // departed yet and depart inside the next N days — the customer app's
 // booking window. Omitted (the admin dashboard's case) means no date bound at
 // all: admins manage the whole schedule horizon, customers only see a week.
+//
+// sort picks the ORDER BY: "departure_asc" (default) is soonest-departure
+// first, right for the mobile app's trip browsing; "created_desc" is
+// newest-created first, right for the admin dashboard's management table —
+// without it, admin pagination (no within_days bound) would page through
+// the whole table in departure_time order, starting from the oldest ride
+// ever scheduled rather than the most recently created one.
 export const rideListQuerySchema = listQuerySchema.extend({
   within_days: z.coerce.number().int().positive().max(365).optional(),
+  sort: z.enum(["departure_asc", "created_desc"]).optional(),
 });

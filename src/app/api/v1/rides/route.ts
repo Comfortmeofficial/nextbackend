@@ -100,12 +100,14 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/v1/rides?skip=0&limit=100&status=&within_days=
+// GET /api/v1/rides?skip=0&limit=100&status=&within_days=&sort=
 export async function GET(request: NextRequest) {
   try {
-    const { skip, limit, within_days } = rideListQuerySchema.parse(Object.fromEntries(request.nextUrl.searchParams));
+    const { skip, limit, within_days, sort } = rideListQuerySchema.parse(
+      Object.fromEntries(request.nextUrl.searchParams),
+    );
     const status = request.nextUrl.searchParams.get("status") ?? undefined;
-    const rides = await listRides(skip, limit, status, within_days);
+    const rides = await listRides(skip, limit, status, within_days, sort);
     return NextResponse.json(rides);
   } catch (error) {
     return handleRouteError(error);
