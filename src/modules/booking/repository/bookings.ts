@@ -11,6 +11,7 @@ import { loadFullRoute, placeholderRoute } from "./routes";
 async function toDto(row: BookingRow): Promise<BookingDto> {
   const ride = await getRideRow(row.ride_id);
   const route = ride ? (await loadFullRoute(ride.route_id, true)) ?? placeholderRoute(ride.route_id) : null;
+  const user = await getUser(row.user_id);
   return {
     id: row.id,
     reference: row.reference,
@@ -64,6 +65,9 @@ async function toDto(row: BookingRow): Promise<BookingDto> {
           updated_at: ride.updated_at.toISOString(),
         }
       : ({} as BookingDto["ride"]),
+    user: user
+      ? { first_name: user.first_name, last_name: user.last_name, email: user.email, phone: user.phone }
+      : null,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };

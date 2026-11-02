@@ -269,6 +269,9 @@ export interface BookingDto {
   rating_comment: string | null;
   no_show_at: string | null;
   ride: RideDto;
+  // Null only if the user row has been hard-deleted out from under an old
+  // booking — getUser() scopes to deleted_at IS NULL like everywhere else.
+  user: { first_name: string; last_name: string; email: string; phone: string | null } | null;
   created_at: string;
   updated_at: string;
 }
