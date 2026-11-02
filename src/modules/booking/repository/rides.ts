@@ -67,6 +67,22 @@ export function applyStopFares<T extends { stops: RouteDto["stops"] }>(
   };
 }
 
+// Marks each stop a marshal has ticked off as physically passed on this
+// ride — new bookings on it should stop offering that stop as a pickup.
+// The 0 sentinel (the route's own starting point, not a route_stops row)
+// is read separately by the caller, not nested into stops here.
+export function applyPassedStops<T extends { stops: RouteDto["stops"] }>(
+  route: T,
+  passedStopIds: number[],
+): T {
+  if (passedStopIds.length === 0) return route;
+  const passed = new Set(passedStopIds);
+  return {
+    ...route,
+    stops: route.stops.map((s) => ({ ...s, passed: passed.has(s.stop_id) })),
+  };
+}
+
 function rideRowToDto(ride: RideRow, route: NonNullable<Awaited<ReturnType<typeof loadFullRoute>>>, seats?: RideSeatDto[]): RideDto {
   return {
     id: ride.id,
@@ -83,7 +99,7 @@ function rideRowToDto(ride: RideRow, route: NonNullable<Awaited<ReturnType<typeo
     total_seats: ride.total_seats,
     booked_seats: ride.booked_seats,
     status: ride.status,
-    route: applyStopFares(route, ride.stop_fares),
+    route: applyPassedStops(applyStopFares(route, ride.stop_fares), ride.passed_stop_ids),
     ...(seats !== undefined ? { seats } : {}),
     marshal_admin_id: ride.marshal_admin_id,
     marshal_name: ride.marshal_name,
@@ -91,6 +107,8 @@ function rideRowToDto(ride: RideRow, route: NonNullable<Awaited<ReturnType<typeo
     driver_col: ride.driver_col,
     schedule_id: ride.schedule_id,
     stop_fares: ride.stop_fares,
+    passed_stop_ids: ride.passed_stop_ids,
+    origin_passed: ride.passed_stop_ids.includes(0),
     created_at: ride.created_at.toISOString(),
     updated_at: ride.updated_at.toISOString(),
   };
@@ -481,6 +499,28 @@ export async function updateRideStatus(id: number, status: RideStatus): Promise<
   }
 
   return ride;
+}
+
+// Ticks a pickup point off (or back on) as physically passed on this ride.
+// stopId null is the sentinel for the route's own starting point (a
+// booking's pickup_stop_id = null, the "Default" option) rather than a
+// row in route_stops.
+export async function setRidePassedStop(id: number, stopId: number | null, passed: boolean): Promise<RideDto> {
+  await ensureBookingSchema();
+  const pool = getBookingPool();
+  const ride = await getRideRow(id);
+  if (!ride) {
+    throw new ApiError(404, "Ride not found");
+  }
+  const sentinel = stopId ?? 0;
+  const next = passed
+    ? Array.from(new Set([...ride.passed_stop_ids, sentinel]))
+    : ride.passed_stop_ids.filter((s) => s !== sentinel);
+  await pool.query(`UPDATE rides SET passed_stop_ids = $2::jsonb, updated_at = now() WHERE id = $1`, [
+    id,
+    JSON.stringify(next),
+  ]);
+  return (await loadFullRide(id))!;
 }
 
 export async function updateRideBus(

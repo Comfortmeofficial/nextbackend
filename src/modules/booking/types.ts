@@ -48,6 +48,11 @@ export interface RouteStopDto {
   // main location — null means "use the ride's base fare."
   fare: number | null;
   stop: PlaceDto;
+  // Ride-specific: whether the marshal has ticked this stop off as already
+  // passed on this ride, so it stops being offered for new bookings. Always
+  // false outside a ride's own nested route.stops (e.g. the generic Routes
+  // management listing, which has no ride to be "passed" on).
+  passed?: boolean;
 }
 
 export interface RouteDto {
@@ -98,6 +103,7 @@ export interface RideRow {
   driver_col: number | null;
   schedule_id: number | null;
   stop_fares: { stop_id: number; fare: number }[];
+  passed_stop_ids: number[];
   created_at: Date;
   updated_at: Date;
 }
@@ -146,7 +152,8 @@ export interface RideDto {
   status: RideStatus;
   // route.stops[].fare is already this ride's effective per-stop fare (see
   // rideRowToDto) — stop_fares below is the same data in raw/editable form,
-  // for the admin dashboard's edit flow.
+  // for the admin dashboard's edit flow. route.stops[].passed is likewise
+  // this ride's derived "has the marshal ticked this stop off" state.
   route: RouteDto;
   seats?: RideSeatDto[];
   marshal_admin_id: number | null;
@@ -155,6 +162,10 @@ export interface RideDto {
   driver_col: number | null;
   schedule_id: number | null;
   stop_fares: { stop_id: number; fare: number }[];
+  passed_stop_ids: number[];
+  // Derived from passed_stop_ids' 0 sentinel — whether the route's own
+  // starting point ("Default" pickup) has been ticked off.
+  origin_passed: boolean;
   created_at: string;
   updated_at: string;
 }

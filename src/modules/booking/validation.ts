@@ -94,6 +94,12 @@ export const rideBusInputSchema = z.object({ bus_id: requiredId });
 export const rideDriverInputSchema = z.object({ driver_id: requiredId });
 // marshal_admin_id: null unassigns the current marshal from the ride.
 export const rideMarshalInputSchema = z.object({ marshal_admin_id: requiredId.nullable() });
+// stop_id null means the route's own starting point ("Default" pickup),
+// not a route_stops row.
+export const ridePassedStopInputSchema = z.object({
+  stop_id: z.number().int().positive().nullable(),
+  passed: z.boolean(),
+});
 export const chatMessageInputSchema = z.object({ message: z.string().trim().min(1).max(2000) });
 
 export const searchInputSchema = z.object({

@@ -2,7 +2,7 @@ import { randomInt, randomUUID } from "node:crypto";
 import { ApiError } from "@/lib/http-errors";
 import { ensureBookingSchema, getBookingPool } from "../db";
 import type { PackageDto, PackageRow, PackageStatus } from "../types";
-import { applyStopFares, getRideRow } from "./rides";
+import { applyPassedStops, applyStopFares, getRideRow } from "./rides";
 import { loadFullRoute, placeholderRoute } from "./routes";
 
 async function toDto(row: PackageRow): Promise<PackageDto> {
@@ -40,13 +40,15 @@ async function toDto(row: PackageRow): Promise<PackageDto> {
           // is now always a real RouteDto or placeholderRoute's stand-in,
           // never actually null — TS just can't correlate that across the
           // two independent `ride ? … : null` ternaries.
-          route: applyStopFares(route!, ride.stop_fares),
+          route: applyPassedStops(applyStopFares(route!, ride.stop_fares), ride.passed_stop_ids),
           marshal_admin_id: ride.marshal_admin_id,
           marshal_name: ride.marshal_name,
           driver_row: ride.driver_row,
           driver_col: ride.driver_col,
           schedule_id: ride.schedule_id,
           stop_fares: ride.stop_fares,
+          passed_stop_ids: ride.passed_stop_ids,
+          origin_passed: ride.passed_stop_ids.includes(0),
           created_at: ride.created_at.toISOString(),
           updated_at: ride.updated_at.toISOString(),
         }

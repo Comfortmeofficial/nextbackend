@@ -188,6 +188,12 @@ export function ensureBookingSchema(): Promise<void> {
       -- would otherwise be unrecoverable once a ride exists.
       ALTER TABLE rides ADD COLUMN IF NOT EXISTS driver_row INTEGER;
       ALTER TABLE rides ADD COLUMN IF NOT EXISTS driver_col INTEGER;
+      -- Pickup points the marshal has ticked off as physically passed on
+      -- this specific ride, so new bookings stop offering them. Stop ids
+      -- from this ride's route.stops; 0 is a sentinel for the route's own
+      -- starting point (a booking's pickup_stop_id = null, the "Default"
+      -- option), which isn't itself a row in route_stops.
+      ALTER TABLE rides ADD COLUMN IF NOT EXISTS passed_stop_ids JSONB NOT NULL DEFAULT '[]';
       CREATE INDEX IF NOT EXISTS idx_rides_marshal_admin_id ON rides (marshal_admin_id);
       CREATE INDEX IF NOT EXISTS idx_rides_driver_id ON rides (driver_id);
       CREATE INDEX IF NOT EXISTS idx_rides_bus_id ON rides (bus_id);
