@@ -315,12 +315,16 @@ export async function listRides(
     params.push(status);
     where += ` AND status = $${params.length}`;
   }
-  // Also drops rides that already departed but are still marked
-  // 'scheduled' (the lifecycle isn't auto-advanced after departure), which
-  // otherwise sort first and eat into the page limit ahead of anything real.
+  // Drops rides that already departed but are still marked 'scheduled'
+  // (the lifecycle isn't auto-advanced after departure), which otherwise
+  // sort first and eat into the page limit ahead of anything real. A
+  // boarding/active ride skips that floor entirely — it's still genuinely
+  // bookable (passengers can board an already-running trip), no matter how
+  // long ago its departure_time was; only End Ride (status='completed')
+  // should pull it from availability.
   if (withinDays !== undefined) {
     params.push(withinDays);
-    where += ` AND departure_time >= now() AND departure_time < now() + ($${params.length}::int * interval '1 day')`;
+    where += ` AND (status != 'scheduled' OR departure_time >= now()) AND departure_time < now() + ($${params.length}::int * interval '1 day')`;
   }
   params.push(skip, limit);
   const orderBy = sort === "created_desc" ? "created_at DESC" : "departure_time ASC";
