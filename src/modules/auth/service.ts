@@ -321,8 +321,15 @@ export async function startGuestSession(data: GuestCheckoutInput): Promise<Guest
   let userId: number;
   if (existing) {
     // A repeat guest — reuse their existing passwordless profile rather than
-    // colliding on users.email's unique index with a second row.
+    // colliding on users.email's unique index with a second row. Still
+    // backfills phone if one's now been typed in — this profile may well
+    // predate the website collecting it at all, and updateUser's
+    // applyUpdate is a no-op whenever data.phone is null/undefined, so a
+    // repeat guest who leaves it blank never clobbers what's on file.
     userId = existing.id;
+    if (data.phone) {
+      await updateUser(userId, { phone: data.phone }).catch(() => {});
+    }
   } else {
     const user = await createUser({
       first_name: data.first_name,

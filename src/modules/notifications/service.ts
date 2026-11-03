@@ -314,6 +314,7 @@ export interface BookingAlertItem {
   final_amount: number;
   passenger_name: string;
   passenger_email: string;
+  passenger_phone: string | null;
   route_name: string;
   departure_time: string;
 }
@@ -342,6 +343,7 @@ export async function sendBookingAlert(items: BookingAlertItem[]): Promise<void>
       <tr>
         <td style="padding:6px 10px;border:1px solid #e5e7eb;">${b.reference}</td>
         <td style="padding:6px 10px;border:1px solid #e5e7eb;">${b.passenger_name} (${b.passenger_email})</td>
+        <td style="padding:6px 10px;border:1px solid #e5e7eb;">${b.passenger_phone ?? "—"}</td>
         <td style="padding:6px 10px;border:1px solid #e5e7eb;">${b.route_name}</td>
         <td style="padding:6px 10px;border:1px solid #e5e7eb;">${formatRideDateTime(b.departure_time)}</td>
         <td style="padding:6px 10px;border:1px solid #e5e7eb;">${b.seat_number}</td>
@@ -356,6 +358,7 @@ export async function sendBookingAlert(items: BookingAlertItem[]): Promise<void>
         <tr style="background:#f3f4f6;">
           <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Ref</th>
           <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Passenger</th>
+          <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Phone</th>
           <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Route</th>
           <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Departure</th>
           <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Seat</th>

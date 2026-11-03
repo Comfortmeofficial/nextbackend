@@ -147,6 +147,7 @@ function notifyBookingAlertEmails(bookings: BookingDto[]): void {
       final_amount: b.final_amount,
       passenger_name: b.user ? `${b.user.first_name} ${b.user.last_name}`.trim() : "Unknown passenger",
       passenger_email: b.user?.email ?? "unknown",
+      passenger_phone: b.user?.phone ?? null,
       route_name: `${b.ride.route.location.name} → ${b.ride.route.destination.name}`,
       departure_time: b.ride.departure_time,
     })),
