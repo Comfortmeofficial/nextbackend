@@ -196,6 +196,10 @@ export const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().default(100),
 });
 
+export const revenueAnalyticsQuerySchema = z.object({
+  range: z.string().default("month"),
+});
+
 // GET /rides only. within_days narrows the list to rides that haven't
 // departed yet and depart inside the next N days — the customer app's
 // booking window. Omitted (the admin dashboard's case) means no date bound at
