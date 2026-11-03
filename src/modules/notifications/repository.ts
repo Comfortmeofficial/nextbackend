@@ -1,5 +1,6 @@
+import { ApiError } from "@/lib/http-errors";
 import { ensureNotificationsSchema, getNotificationsPool } from "./db";
-import type { NotificationDto, NotificationRow } from "./types";
+import type { BookingAlertEmailDto, BookingAlertEmailRow, NotificationDto, NotificationRow } from "./types";
 
 function toDto(row: NotificationRow): NotificationDto {
   return {
@@ -57,4 +58,48 @@ export async function markRead(notificationId: number, userId: number): Promise<
     notificationId,
     userId,
   ]);
+}
+
+function toAlertEmailDto(row: BookingAlertEmailRow): BookingAlertEmailDto {
+  return { id: row.id, email: row.email, created_at: row.created_at.toISOString() };
+}
+
+export async function listBookingAlertEmails(): Promise<BookingAlertEmailDto[]> {
+  const pool = getNotificationsPool();
+  if (!pool) return [];
+  await ensureNotificationsSchema();
+  const { rows } = await pool.query<BookingAlertEmailRow>(
+    `SELECT * FROM booking_alert_emails ORDER BY created_at DESC`,
+  );
+  return rows.map(toAlertEmailDto);
+}
+
+// Only used by the booking-creation fan-out — never route-facing, so no
+// DTO shaping needed.
+export async function listBookingAlertEmailAddresses(): Promise<string[]> {
+  const pool = getNotificationsPool();
+  if (!pool) return [];
+  await ensureNotificationsSchema();
+  const { rows } = await pool.query<{ email: string }>(`SELECT email FROM booking_alert_emails`);
+  return rows.map((r) => r.email);
+}
+
+export async function addBookingAlertEmail(email: string, adminId: number): Promise<BookingAlertEmailDto> {
+  const pool = getNotificationsPool();
+  if (!pool) throw new ApiError(503, "Notifications database is not configured");
+  await ensureNotificationsSchema();
+  const { rows } = await pool.query<BookingAlertEmailRow>(
+    `INSERT INTO booking_alert_emails (email, created_by_admin_id) VALUES ($1, $2)
+     ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+     RETURNING *`,
+    [email.trim().toLowerCase(), adminId],
+  );
+  return toAlertEmailDto(rows[0]);
+}
+
+export async function removeBookingAlertEmail(id: number): Promise<void> {
+  const pool = getNotificationsPool();
+  if (!pool) return;
+  await ensureNotificationsSchema();
+  await pool.query(`DELETE FROM booking_alert_emails WHERE id = $1`, [id]);
 }

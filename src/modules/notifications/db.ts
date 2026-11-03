@@ -37,6 +37,16 @@ export async function ensureNotificationsSchema(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
+
+      -- Admin-managed list of addresses that get an email every time a
+      -- booking is created, so ops can keep an eye on booking activity
+      -- without logging into the dashboard.
+      CREATE TABLE IF NOT EXISTS booking_alert_emails (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        created_by_admin_id INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
     `)
       .then(() => undefined)
       .catch((err) => {

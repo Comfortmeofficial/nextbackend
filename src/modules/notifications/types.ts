@@ -18,3 +18,16 @@ export interface NotificationDto {
   is_read: boolean;
   created_at: string;
 }
+
+export interface BookingAlertEmailRow {
+  id: number;
+  email: string;
+  created_by_admin_id: number | null;
+  created_at: Date;
+}
+
+export interface BookingAlertEmailDto {
+  id: number;
+  email: string;
+  created_at: string;
+}

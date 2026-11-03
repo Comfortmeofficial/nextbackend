@@ -128,3 +128,7 @@ export const listQuerySchema = z.object({
   skip: z.coerce.number().int().nonnegative().default(0),
   limit: z.coerce.number().int().positive().default(50),
 });
+
+export const bookingAlertEmailInputSchema = z.object({
+  email: z.string().trim().email(),
+});

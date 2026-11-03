@@ -3,7 +3,7 @@ import { formatNaira, formatRideDateTime } from "./format";
 import { sendEmail, type EmailAttachment } from "./providers/resend";
 import { sendPush } from "./providers/expo";
 import { sendSms } from "./providers/twilio";
-import { storeNotification } from "./repository";
+import { listBookingAlertEmailAddresses, storeNotification } from "./repository";
 import type {
   bookingCancelledSchema,
   bookingNotificationSchema,
@@ -306,4 +306,65 @@ export async function sendWaitlistNotification(data: z.infer<typeof waitlistNoti
 
   await sendEmail(data.email, "You're on the Comfortme waitlist!", htmlBody);
   return { message: "Waitlist confirmation sent" };
+}
+
+export interface BookingAlertItem {
+  reference: string;
+  seat_number: string;
+  final_amount: number;
+  passenger_name: string;
+  passenger_email: string;
+  route_name: string;
+  departure_time: string;
+}
+
+// Fans a single email out to every admin-configured booking_alert_emails
+// address whenever a booking is made (createBooking/createBookingsBulk),
+// so ops can keep track of booking activity without opening the dashboard.
+// One email per call — a bulk/multi-seat purchase gets a single summary,
+// not one email per seat. Best-effort throughout: no configured recipients,
+// no notifications database, or a single send failing must never surface
+// to (or roll back) the booking that triggered it.
+export async function sendBookingAlert(items: BookingAlertItem[]): Promise<void> {
+  if (items.length === 0) return;
+  let recipients: string[] = [];
+  try {
+    recipients = await listBookingAlertEmailAddresses();
+  } catch {
+    return;
+  }
+  if (recipients.length === 0) return;
+
+  const title = items.length === 1 ? "New Booking Made" : `New Booking Made — ${items.length} seats`;
+  const rows = items
+    .map(
+      (b) => `
+      <tr>
+        <td style="padding:6px 10px;border:1px solid #e5e7eb;">${b.reference}</td>
+        <td style="padding:6px 10px;border:1px solid #e5e7eb;">${b.passenger_name} (${b.passenger_email})</td>
+        <td style="padding:6px 10px;border:1px solid #e5e7eb;">${b.route_name}</td>
+        <td style="padding:6px 10px;border:1px solid #e5e7eb;">${formatRideDateTime(b.departure_time)}</td>
+        <td style="padding:6px 10px;border:1px solid #e5e7eb;">${b.seat_number}</td>
+        <td style="padding:6px 10px;border:1px solid #e5e7eb;">\u{20A6}${formatNaira(b.final_amount)}</td>
+      </tr>`,
+    )
+    .join("");
+  const html = `
+    <div style="font-family:Arial,sans-serif;">
+      <p>${items.length === 1 ? "A new booking was just made:" : `${items.length} seats were just booked in one purchase:`}</p>
+      <table style="border-collapse:collapse;font-size:14px;">
+        <tr style="background:#f3f4f6;">
+          <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Ref</th>
+          <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Passenger</th>
+          <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Route</th>
+          <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Departure</th>
+          <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Seat</th>
+          <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Amount</th>
+        </tr>
+        ${rows}
+      </table>
+    </div>
+  `;
+
+  await Promise.all(recipients.map((email) => sendEmail(email, title, html).catch(() => {})));
 }

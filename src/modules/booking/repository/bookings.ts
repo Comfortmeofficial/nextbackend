@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { ApiError } from "@/lib/http-errors";
+import { sendBookingAlert } from "@/modules/notifications/service";
 import { getUser } from "@/modules/users/repository";
 import { recordRating } from "@/modules/drivers/repository";
 import { ensureBookingSchema, getBookingPool } from "../db";
@@ -134,6 +135,24 @@ async function insertBookingRow(client: PoolClient, input: BookingSeatInput): Pr
   return booking;
 }
 
+// Best-effort fan-out to the admin-configured booking_alert_emails list —
+// never allowed to affect the booking that triggered it, so any failure
+// here is swallowed (sendBookingAlert already does this internally too;
+// this is just the belt-and-suspenders call-site guard).
+function notifyBookingAlertEmails(bookings: BookingDto[]): void {
+  sendBookingAlert(
+    bookings.map((b) => ({
+      reference: b.reference,
+      seat_number: b.seat_number,
+      final_amount: b.final_amount,
+      passenger_name: b.user ? `${b.user.first_name} ${b.user.last_name}`.trim() : "Unknown passenger",
+      passenger_email: b.user?.email ?? "unknown",
+      route_name: `${b.ride.route.location.name} → ${b.ride.route.destination.name}`,
+      departure_time: b.ride.departure_time,
+    })),
+  ).catch(() => {});
+}
+
 export async function createBooking(input: BookingSeatInput): Promise<BookingDto> {
   await ensureBookingSchema();
   const pool = getBookingPool();
@@ -145,7 +164,9 @@ export async function createBooking(input: BookingSeatInput): Promise<BookingDto
       input.rideId,
     ]);
     await client.query("COMMIT");
-    return toDto(booking);
+    const dto = await toDto(booking);
+    notifyBookingAlertEmails([dto]);
+    return dto;
   } catch (err) {
     await client.query("ROLLBACK");
     throw new ApiError(409, err instanceof Error ? err.message : String(err));
@@ -180,7 +201,9 @@ export async function createBookingsBulk(inputs: BookingSeatInput[]): Promise<Bo
       ]);
     }
     await client.query("COMMIT");
-    return Promise.all(bookings.map(toDto));
+    const dtos = await Promise.all(bookings.map(toDto));
+    notifyBookingAlertEmails(dtos);
+    return dtos;
   } catch (err) {
     await client.query("ROLLBACK");
     throw new ApiError(409, err instanceof Error ? err.message : String(err));
