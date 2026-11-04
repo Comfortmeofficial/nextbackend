@@ -331,12 +331,32 @@ export async function startGuestSession(data: GuestCheckoutInput): Promise<Guest
       await updateUser(userId, { phone: data.phone }).catch(() => {});
     }
   } else {
-    const user = await createUser({
-      first_name: data.first_name,
-      last_name: data.last_name,
-      email,
-      phone: data.phone,
-    });
+    let user: Awaited<ReturnType<typeof createUser>>;
+    try {
+      user = await createUser({
+        first_name: data.first_name,
+        last_name: data.last_name,
+        email,
+        phone: data.phone,
+      });
+    } catch (err) {
+      // getUserByEmail already confirmed this email is genuinely new, so a
+      // 409 here can only be the phone — already attached to a different
+      // account (a shared household phone, someone reusing an old number
+      // under a new email, etc). A guest's phone is a contact convenience,
+      // never an identity check the way email is here, so it must never be
+      // able to block them from actually buying a ticket — retry without it.
+      if (err instanceof ApiError && err.status === 409 && data.phone) {
+        user = await createUser({
+          first_name: data.first_name,
+          last_name: data.last_name,
+          email,
+          phone: null,
+        });
+      } else {
+        throw err;
+      }
+    }
     userId = user.id;
 
     // Best-effort, and only for a genuinely new person — joinWaitlist
