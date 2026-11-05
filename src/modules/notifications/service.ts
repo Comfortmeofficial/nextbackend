@@ -25,7 +25,7 @@ import type { z } from "zod";
 // now that this service lives in the same app — same "collapse the hop once
 // colocated" reasoning used for user_service.
 
-const EMAIL_LOGO_HTML =
+export const EMAIL_LOGO_HTML =
   '<img src="https://admin.comfortmeng.com/logo-short.png" alt="Comfortme" ' +
   'width="40" height="40" style="height:40px;width:40px;margin-bottom:16px;display:block;" />';
 

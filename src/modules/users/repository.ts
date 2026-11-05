@@ -97,6 +97,19 @@ export async function createUser(input: UserCreateInput): Promise<UserDto> {
   return toDto(rows[0]);
 }
 
+// For the admin dashboard's mass-email tool — every active user's name and
+// email, nothing else, so a broadcast to thousands of people doesn't pull
+// every column for every row the way listUsers (paginated, every field)
+// would. Deactivated accounts are skipped; they shouldn't get announcements.
+export async function listMassEmailRecipients(): Promise<{ first_name: string; email: string }[]> {
+  await ensureUsersSchema();
+  const pool = getUsersPool();
+  const { rows } = await pool.query<{ first_name: string; email: string }>(
+    `SELECT first_name, email FROM users WHERE deleted_at IS NULL AND is_active = true`,
+  );
+  return rows;
+}
+
 export async function listUsers(skip: number, limit: number): Promise<UserDto[]> {
   await ensureUsersSchema();
   const pool = getUsersPool();

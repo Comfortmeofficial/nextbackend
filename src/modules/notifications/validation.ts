@@ -132,3 +132,8 @@ export const listQuerySchema = z.object({
 export const bookingAlertEmailInputSchema = z.object({
   email: z.string().trim().email(),
 });
+
+export const massEmailInputSchema = z.object({
+  subject: z.string().trim().min(1).max(200),
+  body: z.string().trim().min(1).max(20000),
+});
