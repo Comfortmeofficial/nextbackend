@@ -930,29 +930,34 @@ export async function processPaymentResult(
   const metadata = (result.metadata ?? {}) as Record<string, unknown>;
   const response: Record<string, unknown> = { ...result };
 
-  const payment = await getPaymentByReference(reference);
-  if (payment && payment.status !== "pending") {
-    // A second caller racing the first (the webhook beating the client's
-    // own verify call back from the redirect, or vice versa) must still
-    // report the real booking_id — otherwise whichever caller loses the
-    // race sees a response with no booking_id and treats a successful,
-    // already-booked payment as a failure. booking_id only ever lives on
-    // `response` via the booking_payment branch below, which this early
-    // return skips entirely, so it has to be pulled from the payment row
-    // itself (set once, by whichever call actually ran that branch first).
-    return { ...response, booking_id: payment.booking_id ?? undefined, already_processed: true };
+  if (result.status !== "success") {
+    // Safe no-op if this reference was already resolved by an earlier call
+    // — same WHERE status = 'PENDING' guard as markPaymentSuccessful below,
+    // so this can never clobber an already-successful payment with FAILED.
+    await markPaymentFailed(reference, result.gateway_response ?? null);
+    return response;
   }
 
-  if (result.status === "success") {
-    // Marked successful up front, before any purpose-specific business step
-    // — this reflects whether Paystack was actually paid, independent of
-    // whatever happens next (a booking/package can still fail to be created
-    // afterward and get refunded; the payment itself still succeeded).
-    await markPaymentSuccessful(reference);
+  // markPaymentSuccessful's WHERE status = 'PENDING' guard is what actually
+  // closes the race here. This used to be a plain read-then-branch instead
+  // (fetch the row, check its status, decide whether to proceed) — under
+  // two truly concurrent callers (the webhook beating the client's own
+  // post-redirect verify call, or vice versa), both can read 'pending'
+  // before either has written anything, and both fall through into the
+  // purpose-specific logic below: double-crediting a wallet funding, or
+  // double-creating a booking. Only the caller whose UPDATE actually flips
+  // PENDING -> SUCCESSFUL gets a row back here; everyone else gets null and
+  // must still report the real booking_id — pulled from the row itself,
+  // set once by whoever's claim won.
+  const payment = await markPaymentSuccessful(reference);
+  if (!payment) {
+    const existing = await getPaymentByReference(reference);
+    return { ...response, booking_id: existing?.booking_id ?? undefined, already_processed: true };
+  }
 
-    const purpose = metadata.purpose;
+  const purpose = metadata.purpose;
 
-    if (purpose === "wallet_funding") {
+  if (purpose === "wallet_funding") {
         const userId = metadata.user_id as number | undefined;
         if (userId) {
           await fundWallet({
@@ -975,9 +980,9 @@ export async function processPaymentResult(
         }
       } else if (purpose === "add_card" && result.authorization_code) {
         // Store the reusable token under whichever column matches the
-        // gateway this payment actually used — `payment` (looked up above
-        // for the idempotency check) already carries it.
-        const cardGateway = payment?.gateway ?? "paystack";
+        // gateway this payment actually used — `payment` (the row claimed
+        // above by markPaymentSuccessful) already carries it.
+        const cardGateway = payment.gateway ?? "paystack";
         await addCardRecord({
           user_id: metadata.user_id as number,
           card_holder_name: "Card holder",
@@ -1113,9 +1118,6 @@ export async function processPaymentResult(
           throw new ApiError(400, "Could not register package — amount refunded to your wallet");
         }
       }
-    } else {
-      await markPaymentFailed(reference, result.gateway_response ?? null);
-    }
 
   return response;
 }

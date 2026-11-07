@@ -91,10 +91,15 @@ export interface BookingSeatInput {
 }
 
 async function insertBookingRow(client: PoolClient, input: BookingSeatInput): Promise<BookingRow> {
-  // Lock the seat — mirrors the source's transaction: find an available
-  // seat row, fail the whole operation if it isn't there.
+  // FOR UPDATE actually locks the seat row, unlike a plain SELECT — without
+  // it, two concurrent bookings for the same seat can both read 'available'
+  // before either has written anything and both succeed (no unique
+  // constraint on ride_seats/bookings(ride_id, seat_number) catches this at
+  // the DB level either). A second transaction now blocks here until the
+  // first commits, then re-reads the now-'booked' row and correctly finds
+  // nothing available.
   const seatRes = await client.query(
-    `SELECT id FROM ride_seats WHERE ride_id = $1 AND seat_number = $2 AND status = 'available'`,
+    `SELECT id FROM ride_seats WHERE ride_id = $1 AND seat_number = $2 AND status = 'available' FOR UPDATE`,
     [input.rideId, input.seatNumber],
   );
   if (seatRes.rowCount === 0) {

@@ -117,14 +117,26 @@ export async function deductWallet(input: DeductWalletInput): Promise<Transactio
   if (input.amount <= 0) {
     throw new ApiError(400, "Amount must be positive");
   }
-  const wallet = await getWalletByUser(input.user_id);
+  // The balance check and the deduction are one atomic statement (the
+  // `balance >= $2` guard lives in the WHERE clause, not a separate SELECT
+  // beforehand) — otherwise two concurrent deductions can both read the
+  // same starting balance, both pass a standalone check, and together
+  // overdraw the wallet. There's no CHECK (balance >= 0) constraint backing
+  // this up at the DB level, so the guard has to be airtight here.
+  const pool = getWalletPool();
+  const { rows } = await pool.query<WalletRow>(
+    `UPDATE wallets SET balance = balance - $2, updated_at = now()
+     WHERE user_id = $1 AND deleted_at IS NULL AND balance >= $2
+     RETURNING *`,
+    [input.user_id, input.amount],
+  );
+  const wallet = rows[0];
   if (!wallet) {
-    throw new ApiError(404, "Wallet not found");
+    // The atomic claim above already failed by this point — this is purely
+    // to give a specific error message, not a second chance at the race.
+    const existing = await getWalletByUser(input.user_id);
+    throw new ApiError(existing ? 400 : 404, existing ? "Insufficient wallet balance" : "Wallet not found");
   }
-  if (parseFloat(wallet.balance) < input.amount) {
-    throw new ApiError(400, "Insufficient wallet balance");
-  }
-  await adjustBalance(wallet.id, -input.amount);
   return insertTransaction(wallet.id, input.type, input.amount, input.description, input.reference ?? null);
 }
 
